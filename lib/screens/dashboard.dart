@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
+import 'trip_dashboard.dart';
 import 'create_trip.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -20,65 +21,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
     loadTrips();
   }
 
-  void loadTrips() async {
-    final data = await DatabaseService().getTrips();
+  Future<void> loadTrips() async {
+
+    List<Trip> fetchedTrips = await DatabaseService().getTrips();
+
     setState(() {
-      trips = data;
+      trips = fetchedTrips;
     });
+
   }
 
   @override
   Widget build(BuildContext context) {
+
     return Scaffold(
       appBar: AppBar(
         title: const Text("My Trips"),
       ),
 
-      body: trips.isEmpty
-          ? const Center(
-              child: Text(
-                "No trips yet.\nClick + to create a trip",
-                textAlign: TextAlign.center,
-              ),
-            )
-          : ListView.builder(
-              itemCount: trips.length,
-              itemBuilder: (context, index) {
-
-                final trip = trips[index];
-
-                return Card(
-                  margin: const EdgeInsets.all(10),
-                  elevation: 3,
-                  child: ListTile(
-                    leading: const Icon(Icons.flight_takeoff),
-                    title: Text(trip.title),
-                    subtitle: Text("${trip.location} • ${trip.date}"),
-
-                    onTap: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(
-                          content: Text("Selected trip: ${trip.title}"),
-                        ),
-                      );
-                    },
-                  ),
-                );
-              },
-            ),
-
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.add),
-
         onPressed: () {
           Navigator.push(
             context,
             MaterialPageRoute(
-              builder: (context) => CreateTripScreen(),
+              builder: (context) => const CreateTrip(),
             ),
-          ).then((_) => loadTrips());
+          ).then((result) {
+            if (result == true) {
+              loadTrips();
+            }
+          });
+        },
+      ),
+
+      body: trips.isEmpty
+          ? const Center(child: Text("No Trips Yet"))
+
+          : ListView.builder(
+        itemCount: trips.length,
+        itemBuilder: (context, index) {
+
+          final trip = trips[index];
+
+          return Card(
+            margin: const EdgeInsets.all(10),
+
+            child: ListTile(
+              title: Text(trip.title),
+              subtitle: Text("${trip.location} - ${trip.date}"),
+
+              onTap: () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                    builder: (context) =>
+                        TripDashboard(trip: trip),
+                  ),
+                );
+              },
+            ),
+          );
+
         },
       ),
     );
+
   }
 }
