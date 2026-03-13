@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
 import 'create_trip.dart';
+import 'packing_checklist.dart';
 
 class TripDashboard extends StatelessWidget {
   final Trip trip;
@@ -20,16 +21,19 @@ class TripDashboard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // Location Card
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15)),
               elevation: 5,
               child: ListTile(
                 leading: const Icon(Icons.place, color: Colors.deepPurple),
-                title: Text(trip.location, style: const TextStyle(fontSize: 18)),
+                title: Text(trip.location,
+                    style: const TextStyle(fontSize: 18)),
               ),
             ),
             const SizedBox(height: 15),
+            // Date Card
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15)),
@@ -40,14 +44,18 @@ class TripDashboard extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 30),
+            // Row 1: Edit & Delete
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
+                // Edit Button
                 ElevatedButton.icon(
                   icon: const Icon(Icons.edit),
                   label: const Text("Edit"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orangeAccent),
+                      backgroundColor: Colors.orangeAccent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12)),
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -59,18 +67,43 @@ class TripDashboard extends StatelessWidget {
                     });
                   },
                 ),
+                // Delete Button
                 ElevatedButton.icon(
                   icon: const Icon(Icons.delete),
                   label: const Text("Delete"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent),
+                      backgroundColor: Colors.redAccent,
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 12)),
                   onPressed: () async {
                     await DatabaseService().deleteTrip(trip.id!);
                     Navigator.pop(context, true);
                   },
                 ),
               ],
-            )
+            ),
+            const SizedBox(height: 20),
+            // Row 2: Packing Checklist (centered)
+            Center(
+              child: ElevatedButton.icon(
+                icon: const Icon(Icons.checklist),
+                label: const Text("Packing Checklist"),
+                style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurpleAccent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                        horizontal: 30, vertical: 14)),
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) =>
+                          PackingChecklist(tripId: trip.id!), // fixed
+                    ),
+                  );
+                },
+              ),
+            ),
           ],
         ),
       ),
