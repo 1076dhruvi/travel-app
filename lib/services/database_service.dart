@@ -58,5 +58,29 @@ class DatabaseService {
       return Trip.fromMap(maps[i]);
     });
   }
+  Future<int> updateTrip(Trip trip) async {
+
+    final db = await database;
+
+    return await db.update(
+      'trips',
+      trip.toMap(),
+      where: 'id = ?',
+      whereArgs: [trip.id],
+    );
+
+  }
+
+  Future<int> deleteTrip(int id) async {
+
+    final db = await database;
+
+    return await db.delete(
+      'trips',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+
+  }
 
 }
