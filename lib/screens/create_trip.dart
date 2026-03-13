@@ -2,62 +2,42 @@ import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
 
-class CreateTripScreen extends StatefulWidget {
-
-  final Trip? trip;
-
-  const CreateTripScreen({super.key, this.trip});
+class CreateTrip extends StatefulWidget {
+  const CreateTrip({super.key});
 
   @override
-  State<CreateTripScreen> createState() => _CreateTripScreenState();
+  State<CreateTrip> createState() => _CreateTripState();
 }
 
-class _CreateTripScreenState extends State<CreateTripScreen> {
+class _CreateTripState extends State<CreateTrip> {
 
-  final titleController = TextEditingController();
-  final locationController = TextEditingController();
-  final dateController = TextEditingController();
+  final TextEditingController titleController = TextEditingController();
+  final TextEditingController locationController = TextEditingController();
+  final TextEditingController dateController = TextEditingController();
 
-  @override
-  void initState() {
-    super.initState();
-
-    if (widget.trip != null) {
-      titleController.text = widget.trip!.title;
-      locationController.text = widget.trip!.location;
-      dateController.text = widget.trip!.date;
-    }
-  }
-
-  void saveTrip() async {
+  Future<void> saveTrip() async {
 
     final trip = Trip(
-      id: widget.trip?.id,
       title: titleController.text,
       location: locationController.text,
       date: dateController.text,
     );
 
-    if (widget.trip == null) {
-      await DatabaseService().insertTrip(trip);
-    } else {
-      await DatabaseService().updateTrip(trip);
-    }
+    await DatabaseService().insertTrip(trip);
 
-    Navigator.pop(context);
+    Navigator.pop(context, true);
   }
 
   @override
   Widget build(BuildContext context) {
 
     return Scaffold(
-
       appBar: AppBar(
-        title: Text(widget.trip == null ? "Create Trip" : "Edit Trip"),
+        title: const Text("Create Trip"),
       ),
 
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(20),
 
         child: Column(
           children: [
@@ -69,7 +49,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
               ),
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
 
             TextField(
               controller: locationController,
@@ -78,7 +58,7 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
               ),
             ),
 
-            const SizedBox(height: 10),
+            const SizedBox(height: 20),
 
             TextField(
               controller: dateController,
@@ -87,12 +67,12 @@ class _CreateTripScreenState extends State<CreateTripScreen> {
               ),
             ),
 
-            const SizedBox(height: 20),
+            const SizedBox(height: 30),
 
             ElevatedButton(
               onPressed: saveTrip,
               child: const Text("Save Trip"),
-            )
+            ),
 
           ],
         ),

@@ -15,7 +15,7 @@ class TripDashboardApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
-      home: const DashboardScreen(),
+      home: Dashboard(),
     );
   }
 }
