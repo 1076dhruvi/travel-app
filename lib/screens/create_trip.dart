@@ -3,7 +3,7 @@ import '../models/trip.dart';
 import '../services/database_service.dart';
 
 class CreateTrip extends StatefulWidget {
-  final Trip? trip; // optional trip to edit
+  final Trip? trip;
 
   const CreateTrip({super.key, this.trip});
 
@@ -33,7 +33,7 @@ class _CreateTripState extends State<CreateTrip> {
         dateController.text.isEmpty) return;
 
     final trip = Trip(
-      id: widget.trip?.id, // keep id if editing
+      id: widget.trip?.id,
       title: titleController.text,
       location: locationController.text,
       date: dateController.text,

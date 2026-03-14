@@ -16,7 +16,7 @@ class DatabaseService {
 
     return await openDatabase(
       path,
-      version: 2, // bumped version
+      version: 2,
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE trips(
@@ -51,7 +51,6 @@ class DatabaseService {
     );
   }
 
-  // ---------------- Trips ----------------
   Future<int> insertTrip(Trip trip) async {
     final db = await database;
     return await db.insert(
@@ -83,7 +82,6 @@ class DatabaseService {
     return await db.delete('trips', where: 'id = ?', whereArgs: [id]);
   }
 
-  // ---------------- Packing Items ----------------
   Future<int> insertPackingItem(int tripId, String name) async {
     final db = await database;
     return await db.insert('packing_items', {
