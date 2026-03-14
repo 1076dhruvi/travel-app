@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'screens/dashboard.dart'; // make sure this file exists
+import 'screens/dashboard.dart';
 
 void main() {
   runApp(const TripDashboardApp());
@@ -16,7 +16,7 @@ class TripDashboardApp extends StatelessWidget {
       theme: ThemeData(
         primarySwatch: Colors.deepPurple,
       ),
-      home: const DashboardScreen(), // works because constructor is const
+      home: const DashboardScreen(),
     );
   }
 }
