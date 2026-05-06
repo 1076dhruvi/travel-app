@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'screens/dashboard.dart';
+import 'theme/app_theme.dart';
 
 void main() {
   runApp(const TripDashboardApp());
@@ -13,9 +14,7 @@ class TripDashboardApp extends StatelessWidget {
     return MaterialApp(
       title: 'Trip Dashboard',
       debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.deepPurple,
-      ),
+      theme: AppTheme.lightTheme,
       home: const DashboardScreen(),
     );
   }
