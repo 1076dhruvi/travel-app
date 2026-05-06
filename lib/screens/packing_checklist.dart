@@ -3,7 +3,15 @@ import '../services/database_service.dart';
 
 class PackingChecklist extends StatefulWidget {
   final int tripId;
-  const PackingChecklist({super.key, required this.tripId});
+  final String location;
+  final String date;
+
+  const PackingChecklist({
+    super.key,
+    required this.tripId,
+    required this.location,
+    required this.date,
+  });
 
   @override
   State<PackingChecklist> createState() => _PackingChecklistState();
@@ -16,10 +24,108 @@ class _PackingChecklistState extends State<PackingChecklist> {
   @override
   void initState() {
     super.initState();
-    _loadItems();
+    _initChecklist();
   }
 
-  // Load items from database
+  // 🔥 SMART LOGIC (location + season)
+  List<String> getSmartSuggestions(String location, String date) {
+    List<String> items = [];
+
+    location = location.toLowerCase();
+    date = date.toLowerCase();
+
+    bool isWinter = date.contains("dec") ||
+        date.contains("jan") ||
+        date.contains("feb");
+
+    bool isSummer = date.contains("mar") ||
+        date.contains("apr") ||
+        date.contains("may") ||
+        date.contains("june");
+
+    bool isRainy = date.contains("july") ||
+        date.contains("aug");
+
+    bool isBeach =
+        location.contains("goa") || location.contains("beach");
+
+    bool isColdPlace =
+        location.contains("manali") ||
+            location.contains("shimla") ||
+            location.contains("kashmir") ||
+            location.contains("leh") ||
+            location.contains("ladakh") ||
+            location.contains("gulmarg") ||
+            location.contains("nainital") ||
+            location.contains("mussoorie");
+
+    // Cold places in winter
+    if (isColdPlace && isWinter) {
+      items.addAll([
+        "Heavy Jacket",
+        "Gloves",
+        "Thermal wear",
+        "Woolen socks"
+      ]);
+    }
+
+    // Beach locations (always include swimwear)
+    if (isBeach) {
+      items.addAll([
+        "Sunglasses",
+        "Swimwear",
+        "Sunscreen",
+        "Flip flops"
+      ]);
+    }
+
+    // Summer but not beach (NO swimwear)
+    if (isSummer && !isBeach) {
+      items.addAll([
+        "Light clothes",
+        "Cap",
+        "Sunscreen"
+      ]);
+    }
+
+    // Rainy season
+    if (isRainy) {
+      items.addAll([
+        "Umbrella",
+        "Raincoat",
+        "Waterproof bag"
+      ]);
+    }
+
+    // Default essentials
+    items.addAll([
+      "Phone Charger",
+      "Wallet",
+      "ID Proof"
+    ]);
+
+    return items.toSet().toList();
+  }
+
+  // Initialize checklist
+  Future<void> _initChecklist() async {
+    final existingItems =
+    await DatabaseService().getPackingItems(widget.tripId);
+
+    if (existingItems.isEmpty) {
+      List<String> suggestions =
+      getSmartSuggestions(widget.location, widget.date);
+
+      for (var item in suggestions) {
+        await DatabaseService()
+            .insertPackingItem(widget.tripId, item);
+      }
+    }
+
+    await _loadItems();
+  }
+
+  // Load items
   Future<void> _loadItems() async {
     final fetchedItems =
     await DatabaseService().getPackingItems(widget.tripId);
@@ -28,18 +134,18 @@ class _PackingChecklistState extends State<PackingChecklist> {
     });
   }
 
-  // Add item
+  // Add item manually
   Future<void> _addItem() async {
     final text = itemController.text.trim();
     if (text.isEmpty) return;
 
     await DatabaseService().insertPackingItem(widget.tripId, text);
     itemController.clear();
-    FocusScope.of(context).unfocus(); // hide keyboard
+    FocusScope.of(context).unfocus();
     await _loadItems();
   }
 
-  // Toggle done/undone
+  // Toggle done
   Future<void> _toggleItem(int index) async {
     final item = items[index];
     final newDone = item['done'] == 0;
@@ -58,6 +164,9 @@ class _PackingChecklistState extends State<PackingChecklist> {
     });
   }
 
+  int get completedCount =>
+      items.where((item) => item['done'] == 1).length;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -70,12 +179,21 @@ class _PackingChecklistState extends State<PackingChecklist> {
         decoration: const BoxDecoration(
           gradient: LinearGradient(
             colors: [Colors.purpleAccent, Colors.deepPurple],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
           ),
         ),
         child: Column(
           children: [
+            if (items.isNotEmpty)
+              Text(
+                "Packed: $completedCount / ${items.length}",
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold),
+              ),
+
+            const SizedBox(height: 15),
+
             Row(
               children: [
                 Expanded(
@@ -84,7 +202,8 @@ class _PackingChecklistState extends State<PackingChecklist> {
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
                       hintText: "Add item",
-                      hintStyle: const TextStyle(color: Colors.white70),
+                      hintStyle:
+                      const TextStyle(color: Colors.white70),
                       filled: true,
                       fillColor: Colors.white24,
                       border: OutlineInputBorder(
@@ -98,56 +217,43 @@ class _PackingChecklistState extends State<PackingChecklist> {
                 const SizedBox(width: 10),
                 ElevatedButton(
                   onPressed: _addItem,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.orangeAccent,
-                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 15),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                  ),
                   child: const Icon(Icons.add),
                 ),
               ],
             ),
+
             const SizedBox(height: 20),
+
             Expanded(
               child: items.isEmpty
                   ? const Center(
                 child: Text(
                   "No items yet",
-                  style: TextStyle(color: Colors.white70, fontSize: 18),
+                  style: TextStyle(
+                      color: Colors.white70, fontSize: 18),
                 ),
               )
                   : ListView.builder(
                 itemCount: items.length,
                 itemBuilder: (context, index) {
                   final item = items[index];
-                  return Card(
-                    margin: const EdgeInsets.symmetric(vertical: 6),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15)),
-                    elevation: 5,
-                    child: ListTile(
-                      leading: Checkbox(
-                        value: item['done'] == 1,
-                        onChanged: (_) => _toggleItem(index),
-                        activeColor: Colors.deepPurple,
+
+                  return ListTile(
+                    leading: Checkbox(
+                      value: item['done'] == 1,
+                      onChanged: (_) => _toggleItem(index),
+                    ),
+                    title: Text(
+                      item['name'],
+                      style: TextStyle(
+                        decoration: item['done'] == 1
+                            ? TextDecoration.lineThrough
+                            : null,
                       ),
-                      title: Text(
-                        item['name'],
-                        style: TextStyle(
-                          fontSize: 18,
-                          decoration: item['done'] == 1
-                              ? TextDecoration.lineThrough
-                              : TextDecoration.none,
-                          color: item['done'] == 1
-                              ? Colors.grey
-                              : Colors.black87,
-                        ),
-                      ),
-                      trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.redAccent),
-                        onPressed: () => _deleteItem(index),
-                      ),
+                    ),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete),
+                      onPressed: () => _deleteItem(index),
                     ),
                   );
                 },
