@@ -97,8 +97,11 @@ class TripDashboard extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) =>
-                          PackingChecklist(tripId: trip.id!), // fixed
+                      builder: (context) => PackingChecklist(
+                        tripId: trip.id!,
+                        location: trip.location,
+                        date: trip.date,
+                      ), // fixed
                     ),
                   );
                 },
