@@ -1,0 +1,25 @@
+{
+  "mumbai": [
+    {"title": "Mumbai Police Control Room", "number": "02222621855"},
+    {"title": "Mumbai Ambulance Service", "number": "108"},
+    {"title": "Lilavati Hospital Emergency", "number": "02226751000"},
+    {"title": "Fire Brigade Mumbai", "number": "101"}
+  ],
+  "delhi": [
+    {"title": "Delhi Police Control Room", "number": "01123490000"},
+    {"title": "Delhi Ambulance", "number": "102"},
+    {"title": "AIIMS Emergency", "number": "01126594404"},
+    {"title": "Fire Brigade Delhi", "number": "101"}
+  ],
+  "pune": [
+    {"title": "Pune Police", "number": "02026126296"},
+    {"title": "Pune Ambulance", "number": "108"},
+    {"title": "Ruby Hall Clinic", "number": "02066455100"}
+  ],
+  "india": [
+    {"title": "National Emergency", "number": "112"},
+    {"title": "Police", "number": "100"},
+    {"title": "Ambulance", "number": "108"},
+    {"title": "Fire", "number": "101"}
+  ]
+}

@@ -132,7 +132,9 @@ class TripDashboard extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => const EmergencyDirectory(),
+                      builder: (context) => EmergencyDirectory(
+                        location: trip.location,
+                      ),
                     ),
                   );
                 },
