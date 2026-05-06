@@ -324,27 +324,31 @@ class _DocumentsVaultState extends State<DocumentsVault> {
               maxLines: 1,
               overflow: TextOverflow.ellipsis,
             ),
-            subtitle: Padding(
-              padding: const EdgeInsets.only(top: 4),
-              child: Row(
-                children: [
-                  const Icon(Icons.lock,
-                      size: 12, color: Colors.greenAccent),
-                  const SizedBox(width: 4),
-                  Text(
-                    "AES-256 Encrypted",
-                    style: TextStyle(
-                        color: Colors.greenAccent.shade400,
-                        fontSize: 11),
-                  ),
-                  const SizedBox(width: 10),
-                  Text(
-                    _formatDate(doc.uploadedAt),
-                    style: const TextStyle(
-                        color: Colors.white38, fontSize: 11),
-                  ),
-                ],
-              ),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.lock, size: 12, color: Colors.greenAccent),
+                    const SizedBox(width: 4),
+                    Expanded(
+                      child: Text(
+                        "AES-256 Encrypted",
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.greenAccent.shade400,
+                          fontSize: 11,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                Text(
+                  _formatDate(doc.uploadedAt),
+                  style: const TextStyle(color: Colors.white38, fontSize: 11),
+                ),
+              ],
             ),
             trailing: Row(
               mainAxisSize: MainAxisSize.min,
