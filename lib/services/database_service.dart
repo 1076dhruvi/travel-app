@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/trip.dart';
+import '../models/document.dart';
 
 class DatabaseService {
   static Database? _database;
@@ -12,11 +13,11 @@ class DatabaseService {
   }
 
   Future<Database> _initDatabase() async {
-    String path = join(await getDatabasesPath(), 'trips.db');
+    String dbPath = join(await getDatabasesPath(), 'trips.db');
 
     return await openDatabase(
-      path,
-      version: 2,
+      dbPath,
+      version: 3, // ← bumped to 3
       onCreate: (db, version) async {
         await db.execute('''
           CREATE TABLE trips(
@@ -35,6 +36,19 @@ class DatabaseService {
             done INTEGER
           )
         ''');
+
+        // ← NEW TABLE
+        await db.execute('''
+          CREATE TABLE travel_documents(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER,
+            file_name TEXT,
+            file_type TEXT,
+            encrypted_file_path TEXT,
+            original_name TEXT,
+            uploaded_at TEXT
+          )
+        ''');
       },
       onUpgrade: (db, oldVersion, newVersion) async {
         if (oldVersion < 2) {
@@ -47,17 +61,30 @@ class DatabaseService {
             )
           ''');
         }
+        if (oldVersion < 3) {
+          // ← Add documents table on upgrade
+          await db.execute('''
+            CREATE TABLE travel_documents(
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trip_id INTEGER,
+              file_name TEXT,
+              file_type TEXT,
+              encrypted_file_path TEXT,
+              original_name TEXT,
+              uploaded_at TEXT
+            )
+          ''');
+        }
       },
     );
   }
 
+  // ─── TRIPS ────────────────────────────────────────────────
+
   Future<int> insertTrip(Trip trip) async {
     final db = await database;
-    return await db.insert(
-      'trips',
-      trip.toMap(),
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
+    return await db.insert('trips', trip.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
   }
 
   Future<List<Trip>> getTrips() async {
@@ -68,47 +95,36 @@ class DatabaseService {
 
   Future<int> updateTrip(Trip trip) async {
     final db = await database;
-    return await db.update(
-      'trips',
-      trip.toMap(),
-      where: 'id = ?',
-      whereArgs: [trip.id],
-    );
+    return await db.update('trips', trip.toMap(),
+        where: 'id = ?', whereArgs: [trip.id]);
   }
 
   Future<int> deleteTrip(int id) async {
     final db = await database;
     await db.delete('packing_items', where: 'trip_id = ?', whereArgs: [id]);
+    await db.delete('travel_documents',
+        where: 'trip_id = ?', whereArgs: [id]);
     return await db.delete('trips', where: 'id = ?', whereArgs: [id]);
   }
 
+  // ─── PACKING ITEMS ────────────────────────────────────────
+
   Future<int> insertPackingItem(int tripId, String name) async {
     final db = await database;
-    return await db.insert('packing_items', {
-      'trip_id': tripId,
-      'name': name,
-      'done': 0,
-    });
+    return await db.insert(
+        'packing_items', {'trip_id': tripId, 'name': name, 'done': 0});
   }
 
   Future<List<Map<String, dynamic>>> getPackingItems(int tripId) async {
     final db = await database;
-    return await db.query(
-      'packing_items',
-      where: 'trip_id = ?',
-      whereArgs: [tripId],
-      orderBy: 'id ASC',
-    );
+    return await db.query('packing_items',
+        where: 'trip_id = ?', whereArgs: [tripId], orderBy: 'id ASC');
   }
 
   Future<int> updatePackingItem(int id, bool done) async {
     final db = await database;
-    return await db.update(
-      'packing_items',
-      {'done': done ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    return await db.update('packing_items', {'done': done ? 1 : 0},
+        where: 'id = ?', whereArgs: [id]);
   }
 
   Future<int> deletePackingItem(int id) async {
@@ -118,10 +134,27 @@ class DatabaseService {
 
   Future<void> deletePackingItemsByTrip(int tripId) async {
     final db = await database;
-    await db.delete(
-      'packing_items',
-      where: 'trip_id = ?',
-      whereArgs: [tripId],
-    );
+    await db.delete('packing_items', where: 'trip_id = ?', whereArgs: [tripId]);
+  }
+
+  // ─── TRAVEL DOCUMENTS ─────────────────────────────────────
+
+  Future<int> insertDocument(TravelDocument doc) async {
+    final db = await database;
+    return await db.insert('travel_documents', doc.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<List<TravelDocument>> getDocuments(int tripId) async {
+    final db = await database;
+    final maps = await db.query('travel_documents',
+        where: 'trip_id = ?', whereArgs: [tripId], orderBy: 'uploaded_at DESC');
+    return maps.map((e) => TravelDocument.fromMap(e)).toList();
+  }
+
+  Future<int> deleteDocument(int id) async {
+    final db = await database;
+    return await db
+        .delete('travel_documents', where: 'id = ?', whereArgs: [id]);
   }
 }
