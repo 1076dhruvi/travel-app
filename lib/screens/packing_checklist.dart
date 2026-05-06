@@ -27,24 +27,17 @@ class _PackingChecklistState extends State<PackingChecklist> {
     _initChecklist();
   }
 
-  // 🔥 SMART LOGIC (location + season)
+  // 🔥 SMART LOGIC (NUMERIC MONTH + FALLBACK)
   List<String> getSmartSuggestions(String location, String date) {
     List<String> items = [];
 
     location = location.toLowerCase();
-    date = date.toLowerCase();
 
-    bool isWinter = date.contains("dec") ||
-        date.contains("jan") ||
-        date.contains("feb");
+    int month = int.parse(date.split("/")[1]);
 
-    bool isSummer = date.contains("mar") ||
-        date.contains("apr") ||
-        date.contains("may") ||
-        date.contains("june");
-
-    bool isRainy = date.contains("july") ||
-        date.contains("aug");
+    bool isWinter = (month == 12 || month == 1 || month == 2);
+    bool isSummer = (month >= 3 && month <= 6);
+    bool isRainy = (month == 7 || month == 8);
 
     bool isBeach =
         location.contains("goa") || location.contains("beach");
@@ -59,7 +52,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
             location.contains("nainital") ||
             location.contains("mussoorie");
 
-    // Cold places in winter
+    // ❄️ Cold + winter
     if (isColdPlace && isWinter) {
       items.addAll([
         "Heavy Jacket",
@@ -69,7 +62,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // Beach locations (always include swimwear)
+    // 🏖 Beach
     if (isBeach) {
       items.addAll([
         "Sunglasses",
@@ -79,7 +72,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // Summer but not beach (NO swimwear)
+    // ☀️ Summer (non-beach)
     if (isSummer && !isBeach) {
       items.addAll([
         "Light clothes",
@@ -88,7 +81,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // Rainy season
+    // 🌧 Rainy
     if (isRainy) {
       items.addAll([
         "Umbrella",
@@ -97,7 +90,17 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // Default essentials
+    // 🔥 FALLBACK (for Feb, Sep, Oct, Nov or unknown places)
+    if (items.isEmpty) {
+      items.addAll([
+        "Comfortable clothes",
+        "Shoes",
+        "Toiletries",
+        "Power bank"
+      ]);
+    }
+
+    // 📌 Always needed
     items.addAll([
       "Phone Charger",
       "Wallet",
@@ -107,18 +110,12 @@ class _PackingChecklistState extends State<PackingChecklist> {
     return items.toSet().toList();
   }
 
-  // Initialize checklist
   Future<void> _initChecklist() async {
-    final existingItems =
-    await DatabaseService().getPackingItems(widget.tripId);
+    await DatabaseService().deletePackingItemsByTrip(widget.tripId);
 
     List<String> suggestions =
     getSmartSuggestions(widget.location, widget.date);
 
-   // Delete old auto-generated items
-    await DatabaseService().deletePackingItemsByTrip(widget.tripId);
-
-   // Insert new ones
     for (var item in suggestions) {
       await DatabaseService()
           .insertPackingItem(widget.tripId, item);
@@ -127,7 +124,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
     await _loadItems();
   }
 
-  // Load items
   Future<void> _loadItems() async {
     final fetchedItems =
     await DatabaseService().getPackingItems(widget.tripId);
@@ -136,33 +132,28 @@ class _PackingChecklistState extends State<PackingChecklist> {
     });
   }
 
-  // Add item manually
   Future<void> _addItem() async {
     final text = itemController.text.trim();
     if (text.isEmpty) return;
 
     await DatabaseService().insertPackingItem(widget.tripId, text);
     itemController.clear();
-    FocusScope.of(context).unfocus();
     await _loadItems();
   }
 
-  // Toggle done
   Future<void> _toggleItem(int index) async {
     final item = items[index];
     final newDone = item['done'] == 0;
 
     await DatabaseService().updatePackingItem(item['id'], newDone);
-
-    await _loadItems(); // refresh from database
+    await _loadItems();
   }
 
-  // Delete item
   Future<void> _deleteItem(int index) async {
     final item = items[index];
-    await DatabaseService().deletePackingItem(item['id']);
 
-    await _loadItems(); // refresh from database
+    await DatabaseService().deletePackingItem(item['id']);
+    await _loadItems();
   }
 
   int get completedCount =>
@@ -226,15 +217,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
             const SizedBox(height: 20),
 
             Expanded(
-              child: items.isEmpty
-                  ? const Center(
-                child: Text(
-                  "No items yet",
-                  style: TextStyle(
-                      color: Colors.white70, fontSize: 18),
-                ),
-              )
-                  : ListView.builder(
+              child: ListView.builder(
                 itemCount: items.length,
                 itemBuilder: (context, index) {
                   final item = items[index];
