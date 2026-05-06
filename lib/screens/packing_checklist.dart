@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
+import '../services/packing_service.dart';
 
 class PackingChecklist extends StatefulWidget {
   final int tripId;
