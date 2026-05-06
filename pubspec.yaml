@@ -1,6 +1,5 @@
 name: trip_dashboard
 description: "A new Flutter project."
-
 publish_to: 'none'
 
 version: 1.0.0+1
@@ -11,9 +10,9 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
-
   sqflite: ^2.3.0
   path: ^1.8.3
+<<<<<<< HEAD
   path_provider: ^2.1.1
   file_picker: ^11.0.2
   encrypt: ^5.0.3
@@ -23,7 +22,11 @@ dependencies:
   # 🌐 ADDED FOR WEATHER API CALL
   http: ^1.2.2
 
+=======
+>>>>>>> f29e4b9 (my changes)
   cupertino_icons: ^1.0.8
+  url_launcher: ^6.2.5
+  http: ^1.2.0
 
 dev_dependencies:
   flutter_test:
@@ -32,3 +35,5 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/data/emergency_data.json
