@@ -3,7 +3,8 @@ import '../models/trip.dart';
 import '../services/database_service.dart';
 import 'create_trip.dart';
 import 'packing_checklist.dart';
-import 'emergency.dart'; // ✅ your friend's file
+import 'emergency.dart';
+import 'package:trip_dashboard/screens/documents_vault.dart';
 
 class TripDashboard extends StatelessWidget {
   final Trip trip;
@@ -82,8 +83,21 @@ class TripDashboard extends StatelessWidget {
             Card(
               child: ListTile(
                 leading: const Icon(Icons.folder, color: Colors.deepPurple),
-                title: const Text("Documents"),
-                subtitle: const Text("No documents uploaded"),
+                title: const Text("Documents Vault"),
+                subtitle: const Text("Tap to open secure vault"),
+                onTap: () {
+                  print("Documents tapped");
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => DocumentsVault(
+                        tripId: trip.id!,
+                        tripTitle: trip.title,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
 
