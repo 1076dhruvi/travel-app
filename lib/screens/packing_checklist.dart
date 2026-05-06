@@ -27,7 +27,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     _initChecklist();
   }
 
-  // 🧠 SMART RULE ENGINE (kept inside screen intentionally)
+  // 🧠 SMART RULE ENGINE
   List<String> getSmartSuggestions(String location, String date) {
     List<String> items = [];
 
@@ -39,8 +39,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     bool isSummer = (month >= 3 && month <= 6);
     bool isRainy = (month == 7 || month == 8);
 
-    bool isBeach =
-        location.contains("goa") || location.contains("beach");
+    bool isBeach = location.contains("goa") || location.contains("beach");
 
     bool isColdPlace =
         location.contains("manali") ||
@@ -103,11 +102,14 @@ class _PackingChecklistState extends State<PackingChecklist> {
   Future<void> _initChecklist() async {
     await DatabaseService().deletePackingItemsByTrip(widget.tripId);
 
-    List<String> suggestions =
-    getSmartSuggestions(widget.location, widget.date);
+    final packingService = PackingService();
+
+    final suggestions =
+    await packingService.generateSmartList(widget.location);
 
     for (var item in suggestions) {
-      await DatabaseService().insertPackingItem(widget.tripId, item);
+      await DatabaseService()
+          .insertPackingItem(widget.tripId, item);
     }
 
     await _loadItems();
@@ -126,8 +128,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final text = itemController.text.trim();
     if (text.isEmpty) return;
 
-    await DatabaseService()
-        .insertPackingItem(widget.tripId, text);
+    await DatabaseService().insertPackingItem(widget.tripId, text);
 
     itemController.clear();
     await _loadItems();
@@ -154,62 +155,92 @@ class _PackingChecklistState extends State<PackingChecklist> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F6FF),
+
       appBar: AppBar(
         title: const Text("Packing Checklist"),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: const Color(0xFF6A1B9A),
+        elevation: 0,
       ),
+
       body: Column(
         children: [
-          const SizedBox(height: 10),
+          const SizedBox(height: 12),
 
+          // 📊 Progress header
           Text(
             "Packed: $completedCount / ${items.length}",
-            style: const TextStyle(fontSize: 18),
+            style: const TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: Colors.black87,
+            ),
           ),
 
+          const SizedBox(height: 10),
+
+          // ➕ Input box
           Padding(
-            padding: const EdgeInsets.all(10),
+            padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: itemController,
                     decoration: const InputDecoration(
-                      hintText: "Add item",
+                      hintText: "Add new item...",
                     ),
                     onSubmitted: (_) => _addItem(),
                   ),
                 ),
-                IconButton(
-                  icon: const Icon(Icons.add),
+                const SizedBox(width: 8),
+                ElevatedButton(
                   onPressed: _addItem,
+                  child: const Text("Add"),
                 )
               ],
             ),
           ),
 
+          const SizedBox(height: 10),
+
+          // 📦 List
           Expanded(
             child: ListView.builder(
               itemCount: items.length,
               itemBuilder: (context, index) {
                 final item = items[index];
 
-                return ListTile(
-                  leading: Checkbox(
+                return Card(
+                  margin: const EdgeInsets.symmetric(
+                      horizontal: 12, vertical: 6),
+                  elevation: 3,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: CheckboxListTile(
+                    activeColor: const Color(0xFF6A1B9A),
                     value: item['done'] == 1,
                     onChanged: (_) => _toggleItem(index),
-                  ),
-                  title: Text(
-                    item['name'],
-                    style: TextStyle(
-                      decoration: item['done'] == 1
-                          ? TextDecoration.lineThrough
-                          : null,
+
+                    title: Text(
+                      item['name'],
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w500,
+                        decoration: item['done'] == 1
+                            ? TextDecoration.lineThrough
+                            : null,
+                      ),
                     ),
-                  ),
-                  trailing: IconButton(
-                    icon: const Icon(Icons.delete),
-                    onPressed: () => _deleteItem(index),
+
+                    secondary: IconButton(
+                      icon: const Icon(
+                        Icons.delete,
+                        color: Colors.redAccent,
+                      ),
+                      onPressed: () => _deleteItem(index),
+                    ),
                   ),
                 );
               },
