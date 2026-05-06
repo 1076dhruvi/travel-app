@@ -3,6 +3,7 @@ import '../models/trip.dart';
 import '../services/database_service.dart';
 import 'create_trip.dart';
 import 'packing_checklist.dart';
+import 'emergency.dart'; // ✅ your friend's file
 
 class TripDashboard extends StatelessWidget {
   final Trip trip;
@@ -11,17 +12,45 @@ class TripDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+
+    // ✅ Days Left Logic
+    int daysLeft = 0;
+
+    try {
+      List<String> parts = trip.date.split('/'); // DD/MM/YYYY
+
+      DateTime tripDate = DateTime(
+        int.parse(parts[2]), // year
+        int.parse(parts[1]), // month
+        int.parse(parts[0]), // day
+      );
+
+      daysLeft = tripDate.difference(DateTime.now()).inDays;
+    } catch (e) {
+      daysLeft = 0;
+    }
+
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.title),
         backgroundColor: Colors.deepPurple,
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(20),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Location Card
+
+            // 🔥 Days Left
+            Text(
+              "Days left: $daysLeft",
+              style: const TextStyle(
+                  fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 15),
+
+            // 📍 Location Card
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15)),
@@ -29,33 +58,104 @@ class TripDashboard extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.place, color: Colors.deepPurple),
                 title: Text(trip.location,
-                    style: const TextStyle(fontSize: 18)),
+                    style: const TextStyle(fontSize: 16)),
               ),
             ),
-            const SizedBox(height: 15),
-            // Date Card
+
+            const SizedBox(height: 10),
+
+            // 📅 Date Card
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15)),
               elevation: 5,
               child: ListTile(
                 leading: const Icon(Icons.date_range, color: Colors.deepPurple),
-                title: Text(trip.date, style: const TextStyle(fontSize: 18)),
+                title: Text(trip.date,
+                    style: const TextStyle(fontSize: 16)),
               ),
             ),
-            const SizedBox(height: 30),
-            // Row 1: Edit & Delete
+
+            const SizedBox(height: 20),
+
+            // 📄 Documents
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.folder, color: Colors.deepPurple),
+                title: const Text("Documents"),
+                subtitle: const Text("No documents uploaded"),
+              ),
+            ),
+
+            // 📋 Checklist
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.checklist, color: Colors.deepPurple),
+                title: const Text("Packing Checklist"),
+                subtitle: const Text("Tap to open"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => PackingChecklist(
+                        tripId: trip.id!,
+                        location: trip.location,
+                        date: trip.date,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // 🚨 Emergency Directory (NEW)
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.warning, color: Colors.red),
+                title: const Text("Emergency Directory"),
+                subtitle: const Text("Tap to view emergency contacts"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => const EmergencyDirectory(),
+                    ),
+                  );
+                },
+              ),
+            ),
+
+            // 💰 Budget
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.currency_rupee, color: Colors.green),
+                title: const Text("Budget"),
+                subtitle: const Text("₹0 spent"),
+              ),
+            ),
+
+            // 📝 Notes
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.note, color: Colors.orange),
+                title: const Text("Notes"),
+                subtitle: const Text("No notes added"),
+              ),
+            ),
+
+            const SizedBox(height: 25),
+
+            // ✏️ Edit & 🗑 Delete
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                // Edit Button
+
+                // Edit
                 ElevatedButton.icon(
                   icon: const Icon(Icons.edit),
                   label: const Text("Edit"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orangeAccent,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12)),
+                      backgroundColor: Colors.orangeAccent),
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -67,45 +167,19 @@ class TripDashboard extends StatelessWidget {
                     });
                   },
                 ),
-                // Delete Button
+
+                // Delete
                 ElevatedButton.icon(
                   icon: const Icon(Icons.delete),
                   label: const Text("Delete"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 20, vertical: 12)),
+                      backgroundColor: Colors.redAccent),
                   onPressed: () async {
                     await DatabaseService().deleteTrip(trip.id!);
                     Navigator.pop(context, true);
                   },
                 ),
               ],
-            ),
-            const SizedBox(height: 20),
-            // Row 2: Packing Checklist (centered)
-            Center(
-              child: ElevatedButton.icon(
-                icon: const Icon(Icons.checklist),
-                label: const Text("Packing Checklist"),
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: Colors.deepPurpleAccent,
-                    foregroundColor: Colors.white,
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 30, vertical: 14)),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => PackingChecklist(
-                        tripId: trip.id!,
-                        location: trip.location,
-                        date: trip.date,
-                      ), // fixed
-                    ),
-                  );
-                },
-              ),
             ),
           ],
         ),
