@@ -27,7 +27,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     _initChecklist();
   }
 
-  // 🔥 SMART LOGIC (NUMERIC MONTH + FALLBACK)
+  // 🧠 SMART RULE ENGINE (kept inside screen intentionally)
   List<String> getSmartSuggestions(String location, String date) {
     List<String> items = [];
 
@@ -46,13 +46,8 @@ class _PackingChecklistState extends State<PackingChecklist> {
         location.contains("manali") ||
             location.contains("shimla") ||
             location.contains("kashmir") ||
-            location.contains("leh") ||
-            location.contains("ladakh") ||
-            location.contains("gulmarg") ||
-            location.contains("nainital") ||
-            location.contains("mussoorie");
+            location.contains("ladakh");
 
-    // ❄️ Cold + winter
     if (isColdPlace && isWinter) {
       items.addAll([
         "Heavy Jacket",
@@ -62,7 +57,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // 🏖 Beach
     if (isBeach) {
       items.addAll([
         "Sunglasses",
@@ -72,7 +66,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // ☀️ Summer (non-beach)
     if (isSummer && !isBeach) {
       items.addAll([
         "Light clothes",
@@ -81,7 +74,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // 🌧 Rainy
     if (isRainy) {
       items.addAll([
         "Umbrella",
@@ -90,7 +82,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // 🔥 FALLBACK (for Feb, Sep, Oct, Nov or unknown places)
     if (items.isEmpty) {
       items.addAll([
         "Comfortable clothes",
@@ -100,7 +91,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // 📌 Always needed
     items.addAll([
       "Phone Charger",
       "Wallet",
@@ -117,18 +107,18 @@ class _PackingChecklistState extends State<PackingChecklist> {
     getSmartSuggestions(widget.location, widget.date);
 
     for (var item in suggestions) {
-      await DatabaseService()
-          .insertPackingItem(widget.tripId, item);
+      await DatabaseService().insertPackingItem(widget.tripId, item);
     }
 
     await _loadItems();
   }
 
   Future<void> _loadItems() async {
-    final fetchedItems =
+    final fetched =
     await DatabaseService().getPackingItems(widget.tripId);
+
     setState(() {
-      items = fetchedItems;
+      items = fetched;
     });
   }
 
@@ -136,7 +126,9 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final text = itemController.text.trim();
     if (text.isEmpty) return;
 
-    await DatabaseService().insertPackingItem(widget.tripId, text);
+    await DatabaseService()
+        .insertPackingItem(widget.tripId, text);
+
     itemController.clear();
     await _loadItems();
   }
@@ -157,7 +149,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
   }
 
   int get completedCount =>
-      items.where((item) => item['done'] == 1).length;
+      items.where((e) => e['done'] == 1).length;
 
   @override
   Widget build(BuildContext context) {
@@ -166,85 +158,64 @@ class _PackingChecklistState extends State<PackingChecklist> {
         title: const Text("Packing Checklist"),
         backgroundColor: Colors.deepPurple,
       ),
-      body: Container(
-        padding: const EdgeInsets.all(20),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.purpleAccent, Colors.deepPurple],
+      body: Column(
+        children: [
+          const SizedBox(height: 10),
+
+          Text(
+            "Packed: $completedCount / ${items.length}",
+            style: const TextStyle(fontSize: 18),
           ),
-        ),
-        child: Column(
-          children: [
-            if (items.isNotEmpty)
-              Text(
-                "Packed: $completedCount / ${items.length}",
-                style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold),
-              ),
 
-            const SizedBox(height: 15),
-
-            Row(
+          Padding(
+            padding: const EdgeInsets.all(10),
+            child: Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: itemController,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
+                    decoration: const InputDecoration(
                       hintText: "Add item",
-                      hintStyle:
-                      const TextStyle(color: Colors.white70),
-                      filled: true,
-                      fillColor: Colors.white24,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
                     ),
                     onSubmitted: (_) => _addItem(),
                   ),
                 ),
-                const SizedBox(width: 10),
-                ElevatedButton(
+                IconButton(
+                  icon: const Icon(Icons.add),
                   onPressed: _addItem,
-                  child: const Icon(Icons.add),
-                ),
+                )
               ],
             ),
+          ),
 
-            const SizedBox(height: 20),
+          Expanded(
+            child: ListView.builder(
+              itemCount: items.length,
+              itemBuilder: (context, index) {
+                final item = items[index];
 
-            Expanded(
-              child: ListView.builder(
-                itemCount: items.length,
-                itemBuilder: (context, index) {
-                  final item = items[index];
-
-                  return ListTile(
-                    leading: Checkbox(
-                      value: item['done'] == 1,
-                      onChanged: (_) => _toggleItem(index),
+                return ListTile(
+                  leading: Checkbox(
+                    value: item['done'] == 1,
+                    onChanged: (_) => _toggleItem(index),
+                  ),
+                  title: Text(
+                    item['name'],
+                    style: TextStyle(
+                      decoration: item['done'] == 1
+                          ? TextDecoration.lineThrough
+                          : null,
                     ),
-                    title: Text(
-                      item['name'],
-                      style: TextStyle(
-                        decoration: item['done'] == 1
-                            ? TextDecoration.lineThrough
-                            : null,
-                      ),
-                    ),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete),
-                      onPressed: () => _deleteItem(index),
-                    ),
-                  );
-                },
-              ),
+                  ),
+                  trailing: IconButton(
+                    icon: const Icon(Icons.delete),
+                    onPressed: () => _deleteItem(index),
+                  ),
+                );
+              },
             ),
-          ],
-        ),
+          )
+        ],
       ),
     );
   }
