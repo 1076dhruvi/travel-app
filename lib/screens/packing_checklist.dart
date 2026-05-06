@@ -112,14 +112,16 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final existingItems =
     await DatabaseService().getPackingItems(widget.tripId);
 
-    if (existingItems.isEmpty) {
-      List<String> suggestions =
-      getSmartSuggestions(widget.location, widget.date);
+    List<String> suggestions =
+    getSmartSuggestions(widget.location, widget.date);
 
-      for (var item in suggestions) {
-        await DatabaseService()
-            .insertPackingItem(widget.tripId, item);
-      }
+   // Delete old auto-generated items
+    await DatabaseService().deletePackingItemsByTrip(widget.tripId);
+
+   // Insert new ones
+    for (var item in suggestions) {
+      await DatabaseService()
+          .insertPackingItem(widget.tripId, item);
     }
 
     await _loadItems();
@@ -149,19 +151,18 @@ class _PackingChecklistState extends State<PackingChecklist> {
   Future<void> _toggleItem(int index) async {
     final item = items[index];
     final newDone = item['done'] == 0;
+
     await DatabaseService().updatePackingItem(item['id'], newDone);
-    setState(() {
-      items[index]['done'] = newDone ? 1 : 0;
-    });
+
+    await _loadItems(); // refresh from database
   }
 
   // Delete item
   Future<void> _deleteItem(int index) async {
     final item = items[index];
     await DatabaseService().deletePackingItem(item['id']);
-    setState(() {
-      items.removeAt(index);
-    });
+
+    await _loadItems(); // refresh from database
   }
 
   int get completedCount =>
