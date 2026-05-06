@@ -19,11 +19,27 @@ class _CreateTripState extends State<CreateTrip> {
   @override
   void initState() {
     super.initState();
-    // pre-fill if editing
+
     if (widget.trip != null) {
       titleController.text = widget.trip!.title;
       locationController.text = widget.trip!.location;
       dateController.text = widget.trip!.date;
+    }
+  }
+
+  Future<void> pickDate() async {
+    DateTime? pickedDate = await showDatePicker(
+      context: context,
+      initialDate: DateTime.now(),
+      firstDate: DateTime(2020),
+      lastDate: DateTime(2030),
+    );
+
+    if (pickedDate != null) {
+      setState(() {
+        dateController.text =
+        "${pickedDate.day}/${pickedDate.month}/${pickedDate.year}";
+      });
     }
   }
 
@@ -72,19 +88,41 @@ class _CreateTripState extends State<CreateTrip> {
             const SizedBox(height: 15),
             _buildTextField(locationController, "Location", Icons.place),
             const SizedBox(height: 15),
-            _buildTextField(dateController, "Date", Icons.date_range),
+
+            // DATE FIELD (with picker)
+            TextField(
+              controller: dateController,
+              readOnly: true,
+              onTap: pickDate,
+              decoration: InputDecoration(
+                prefixIcon: const Icon(Icons.date_range, color: Colors.white),
+                labelText: "Select Date",
+                labelStyle: const TextStyle(color: Colors.white),
+                filled: true,
+                fillColor: Colors.white24,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide.none,
+                ),
+              ),
+              style: const TextStyle(color: Colors.white),
+            ),
+
             const SizedBox(height: 30),
+
             ElevatedButton(
               onPressed: saveTrip,
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.orangeAccent,
-                padding: const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
+                padding:
+                const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12)),
               ),
               child: Text(
                 isEditing ? "Update Trip" : "Save Trip",
-                style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                style:
+                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
             )
           ],
@@ -93,7 +131,8 @@ class _CreateTripState extends State<CreateTrip> {
     );
   }
 
-  Widget _buildTextField(TextEditingController controller, String label, IconData icon) {
+  Widget _buildTextField(
+      TextEditingController controller, String label, IconData icon) {
     return TextField(
       controller: controller,
       decoration: InputDecoration(
