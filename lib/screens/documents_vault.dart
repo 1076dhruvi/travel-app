@@ -6,7 +6,7 @@ import 'package:flutter_pdfview/flutter_pdfview.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
 import '../services/encryption_service.dart';
-
+import 'dart:typed_data';
 // ─────────────────────────────────────────────────────────────
 // 🔐 DOCUMENTS VAULT SCREEN
 // ─────────────────────────────────────────────────────────────
@@ -48,7 +48,7 @@ class _DocumentsVaultState extends State<DocumentsVault> {
 
   Future<void> _pickAndUploadDocument() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['pdf', 'jpg', 'jpeg', 'png'],
         allowMultiple: false,
@@ -56,25 +56,38 @@ class _DocumentsVaultState extends State<DocumentsVault> {
 
       if (result == null || result.files.isEmpty) return;
 
-      final pickedFile = result.files.first;
-      if (pickedFile.path == null) return;
+      final file = result.files.first;
 
       setState(() => _isLoading = true);
 
-      final ext = path.extension(pickedFile.name).toLowerCase();
-      final fileType = (ext == '.pdf') ? 'pdf' : 'image';
+      Uint8List? bytes = file.bytes;
 
-      final encryptedPath = await _encryption.encryptAndSaveFile(
-        pickedFile.path!,
+      // 🔥 FIX: fallback if bytes is null
+      if (bytes == null && file.path != null) {
+        bytes = await File(file.path!).readAsBytes();
+      }
+
+      if (bytes == null) {
+        throw "File data not found";
+      }
+
+      final ext = file.extension ?? 'file';
+      final fileType = (ext == 'pdf') ? 'pdf' : 'image';
+
+      // 🔥 NEW: use bytes-based encryption
+      final encryptedPath =
+      await _encryption.encryptAndSaveBytes(
+        bytes,
+        file.name,
         widget.tripId.toString(),
       );
 
       final doc = TravelDocument(
         tripId: widget.tripId,
-        fileName: pickedFile.name,
+        fileName: file.name,
         fileType: fileType,
         encryptedFilePath: encryptedPath,
-        originalName: pickedFile.name,
+        originalName: file.name,
         uploadedAt: DateTime.now(),
       );
 
@@ -84,21 +97,24 @@ class _DocumentsVaultState extends State<DocumentsVault> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("✅ Document uploaded & encrypted!"),
+            content: Text("✅ Document uploaded successfully"),
             backgroundColor: Colors.green,
           ),
         );
       }
     } catch (e) {
       setState(() => _isLoading = false);
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text("❌ Error: $e"),
+            content: Text("❌ Upload failed: $e"),
             backgroundColor: Colors.red,
           ),
         );
       }
+    } finally {
+      setState(() => _isLoading = false);
     }
   }
 

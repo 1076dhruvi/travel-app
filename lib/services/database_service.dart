@@ -20,6 +20,7 @@ class DatabaseService {
       version: 3, // ← bumped to 3
       onCreate: (db, version) async {
         await db.execute('''
+          
           CREATE TABLE trips(
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             title TEXT,
@@ -27,6 +28,17 @@ class DatabaseService {
             date TEXT
           )
         ''');
+        await db.execute('''
+CREATE TABLE documents(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  trip_id INTEGER,
+  file_name TEXT,
+  file_type TEXT,
+  encrypted_file_path TEXT,
+  original_name TEXT,
+  uploaded_at TEXT
+)
+''');
 
         await db.execute('''
           CREATE TABLE packing_items(

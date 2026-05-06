@@ -3,7 +3,7 @@ import 'dart:typed_data';
 import 'package:encrypt/encrypt.dart' as enc;
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as path;
-
+import 'dart:typed_data';
 class EncryptionService {
   // ⚠️ In production, store this key in Flutter Secure Storage
   // For simplicity, we use a fixed key here (32 chars = 256-bit AES)
@@ -69,5 +69,27 @@ class EncryptionService {
     await tempFile.writeAsBytes(decryptedBytes);
 
     return tempFilePath;
+  }
+  Future<String> encryptAndSaveBytes(
+      Uint8List bytes,
+      String fileName,
+      String tripId,
+      ) async {
+    final encData = _encrypter.encryptBytes(bytes, iv: _iv);
+
+    final dir = await getApplicationDocumentsDirectory();
+    final vaultDir = Directory('${dir.path}/vault/$tripId');
+
+    if (!await vaultDir.exists()) {
+      await vaultDir.create(recursive: true);
+    }
+
+    final filePath =
+        '${vaultDir.path}/${DateTime.now().millisecondsSinceEpoch}_$fileName.enc';
+
+    final file = File(filePath);
+    await file.writeAsBytes(encData.bytes);
+
+    return file.path;
   }
 }
