@@ -115,4 +115,13 @@ class DatabaseService {
     final db = await database;
     return await db.delete('packing_items', where: 'id = ?', whereArgs: [id]);
   }
+
+  Future<void> deletePackingItemsByTrip(int tripId) async {
+    final db = await database;
+    await db.delete(
+      'packing_items',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+  }
 }
