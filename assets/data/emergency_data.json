@@ -16,6 +16,12 @@
     {"title": "Pune Ambulance", "number": "108"},
     {"title": "Ruby Hall Clinic", "number": "02066455100"}
   ],
+  "goa": [
+    {"title": "Goa Police Control Room", "number": "0832-2423400"},
+    {"title": "Goa Ambulance", "number": "108"},
+    {"title": "Goa Medical College Emergency", "number": "0832-2458727"},
+    {"title": "Fire Brigade Goa", "number": "101"}
+  ],
   "india": [
     {"title": "National Emergency", "number": "112"},
     {"title": "Police", "number": "100"},
