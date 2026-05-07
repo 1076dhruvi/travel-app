@@ -199,8 +199,10 @@ class TripDashboard extends StatelessWidget {
                   style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.redAccent),
                   onPressed: () async {
-                    await DatabaseService().deleteTrip(trip.id!);
-                    Navigator.pop(context, true);
+  if (trip.id == null) return;
+
+  await DatabaseService().deleteTrip(trip.id!);
+  Navigator.pop(context, true);
                   },
                 ),
               ],
