@@ -34,15 +34,15 @@ class DatabaseService {
 
         // ================= DOCUMENTS =================
         await db.execute('''
-          CREATE TABLE documents(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            trip_id INTEGER,
-            file_name TEXT,
-            file_type TEXT,
-            encrypted_file_path TEXT,
-            original_name TEXT,
-            uploaded_at TEXT
-          )
+        CREATE TABLE travel_documents(
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER,
+        file_name TEXT,
+        file_type TEXT,
+        encrypted_file_path TEXT,
+        original_name TEXT,
+        uploaded_at TEXT
+        )
         ''');
 
         // ================= PACKING ITEMS =================
