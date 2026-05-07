@@ -38,7 +38,7 @@ class _CreateTripState extends State<CreateTrip> {
     if (pickedDate != null) {
       setState(() {
         dateController.text =
-        "${pickedDate.day}/${pickedDate.month}/${pickedDate.year}";
+            "${pickedDate.day} ${pickedDate.month}/${pickedDate.year}";
       });
     }
   }
@@ -69,84 +69,144 @@ class _CreateTripState extends State<CreateTrip> {
     final isEditing = widget.trip != null;
 
     return Scaffold(
+      backgroundColor: const Color(0xFFF6F7FB),
+
+      // 🌈 APP BAR
       appBar: AppBar(
-        title: Text(isEditing ? "Edit Trip" : "Create Trip"),
-        backgroundColor: Colors.deepPurple,
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            colors: [Colors.purpleAccent, Colors.deepPurple],
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
+        elevation: 0,
+        centerTitle: true,
+        backgroundColor: Colors.transparent,
+        title: Text(
+          isEditing ? "Edit Trip" : "Create Trip",
+          style: const TextStyle(fontWeight: FontWeight.bold),
+        ),
+        flexibleSpace: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              colors: [Color(0xFF7C4DFF), Color(0xFFB388FF)],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
           ),
         ),
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          children: [
-            _buildTextField(titleController, "Trip Title", Icons.card_travel),
-            const SizedBox(height: 15),
-            _buildTextField(locationController, "Location", Icons.place),
-            const SizedBox(height: 15),
+      ),
 
-            // DATE FIELD (with picker)
-            TextField(
-              controller: dateController,
-              readOnly: true,
-              onTap: pickDate,
-              decoration: InputDecoration(
-                prefixIcon: const Icon(Icons.date_range, color: Colors.white),
-                labelText: "Select Date",
-                labelStyle: const TextStyle(color: Colors.white),
-                filled: true,
-                fillColor: Colors.white24,
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
+      body: SingleChildScrollView(
+        child: Padding(
+          padding: const EdgeInsets.all(18),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+
+              const SizedBox(height: 10),
+
+              const Text(
+                "Plan Your Trip ✈️",
+                style: TextStyle(
+                  fontSize: 22,
+                  fontWeight: FontWeight.bold,
                 ),
               ),
-              style: const TextStyle(color: Colors.white),
-            ),
 
-            const SizedBox(height: 30),
+              const SizedBox(height: 5),
 
-            ElevatedButton(
-              onPressed: saveTrip,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.orangeAccent,
-                padding:
-                const EdgeInsets.symmetric(horizontal: 50, vertical: 15),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12)),
+              const Text(
+                "Fill in the details below",
+                style: TextStyle(color: Colors.black54),
               ),
-              child: Text(
-                isEditing ? "Update Trip" : "Save Trip",
-                style:
-                const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+
+              const SizedBox(height: 25),
+
+              _buildField(
+                controller: titleController,
+                label: "Destination",
+                icon: Icons.location_city,
               ),
-            )
-          ],
+
+              const SizedBox(height: 15),
+
+              _buildField(
+                controller: locationController,
+                label: "Location",
+                icon: Icons.place,
+              ),
+
+              const SizedBox(height: 15),
+
+              GestureDetector(
+                onTap: pickDate,
+                child: AbsorbPointer(
+                  child: _buildField(
+                    controller: dateController,
+                    label: "Start Date",
+                    icon: Icons.date_range,
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 30),
+
+              // 🚀 BUTTON
+              SizedBox(
+                width: double.infinity,
+                height: 55,
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: const LinearGradient(
+                      colors: [Color(0xFF7C4DFF), Color(0xFFB388FF)],
+                    ),
+                    borderRadius: BorderRadius.circular(15),
+                  ),
+                  child: ElevatedButton(
+                    onPressed: saveTrip,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.transparent,
+                      shadowColor: Colors.transparent,
+                    ),
+                    child: Text(
+                      isEditing ? "Update Trip" : "Create Trip",
+                      style: const TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );
   }
 
-  Widget _buildTextField(
-      TextEditingController controller, String label, IconData icon) {
-    return TextField(
-      controller: controller,
-      decoration: InputDecoration(
-        prefixIcon: Icon(icon, color: Colors.white),
-        labelText: label,
-        labelStyle: const TextStyle(color: Colors.white),
-        filled: true,
-        fillColor: Colors.white24,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(12),
-          borderSide: BorderSide.none,
+  // 💅 CLEAN INPUT FIELD
+  Widget _buildField({
+    required TextEditingController controller,
+    required String label,
+    required IconData icon,
+  }) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 8,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: TextField(
+        controller: controller,
+        decoration: InputDecoration(
+          icon: Icon(icon, color: const Color(0xFF7C4DFF)),
+          labelText: label,
+          border: InputBorder.none,
         ),
       ),
-      style: const TextStyle(color: Colors.white),
     );
   }
 }
