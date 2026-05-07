@@ -27,7 +27,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     _initChecklist();
   }
 
-  // 🧠 SMART LOGIC (FIXED PRIORITY SYSTEM)
+  // 🧠 SMART LOGIC (UPDATED - FULL MONTH COVERAGE)
   List<String> getSmartSuggestions(String location, String date) {
     List<String> items = [];
 
@@ -36,8 +36,12 @@ class _PackingChecklistState extends State<PackingChecklist> {
     int month = int.parse(date.split("/")[1]);
 
     bool isWinter = (month == 12 || month == 1 || month == 2);
-    bool isSummer = (month >= 3 && month <= 6);
-    bool isRainy = (month == 7 || month == 8);
+    bool isSummer = (month >= 3 && month <= 5);
+    bool isPeakSummer = (month == 6);
+
+    bool isRainy = (month == 7 || month == 8 || month == 9);
+    bool isPostMonsoon = (month == 10);
+    bool isEarlyWinter = (month == 11);
 
     bool isGoa = location.contains("goa");
     bool isBeach = isGoa || location.contains("beach");
@@ -52,7 +56,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
             location.contains("nainital") ||
             location.contains("mussoorie");
 
-    // 🥇 PRIORITY 1: STRONG LOCATION RULES
+    // 🥇 LOCATION BASED PRIORITY
 
     if (isColdPlace) {
       items.addAll([
@@ -72,30 +76,66 @@ class _PackingChecklistState extends State<PackingChecklist> {
       ]);
     }
 
-    // 🥈 PRIORITY 2: WEATHER (only if neutral location)
+    // 🥈 SEASONAL LOGIC (only if not special location)
     if (!isColdPlace && !isBeach) {
+
+      // 🌞 Summer (Mar–May)
       if (isSummer) {
         items.addAll([
-          "Light Clothes",
+          "Light Cotton Clothes",
           "Cap",
           "Sunscreen"
         ]);
       }
 
-      if (isWinter) {
+      // 🔥 Peak Summer (June)
+      if (isPeakSummer) {
         items.addAll([
-          "Light Jacket",
-          "Full Sleeves"
+          "Breathable Clothes",
+          "Hat",
+          "Electrolyte Pack",
+          "Sunscreen"
         ]);
       }
-    }
 
-    if (isRainy) {
-      items.addAll([
-        "Umbrella",
-        "Raincoat",
-        "Waterproof Bag"
-      ]);
+      // 🌧 Monsoon (Jul–Sep)
+      if (isRainy) {
+        items.addAll([
+          "Umbrella",
+          "Raincoat",
+          "Waterproof Bag",
+          "Quick Dry Clothes",
+          "Mosquito Repellent"
+        ]);
+      }
+
+      // 🍂 Post Monsoon (October)
+      if (isPostMonsoon) {
+        items.addAll([
+          "Light Jacket",
+          "Comfortable Shoes",
+          "Full Sleeve Shirt"
+        ]);
+      }
+
+      // 🌤 Early Winter (November)
+      if (isEarlyWinter) {
+        items.addAll([
+          "Sweater",
+          "Light Jacket",
+          "Warm Socks"
+        ]);
+      }
+
+      // ❄ Winter (Dec–Feb)
+      if (isWinter) {
+        items.addAll([
+          "Warm Jacket",
+          "Full Sleeves",
+          "Thermal Wear",
+          "Warm Socks"
+        ]);
+      }
     }
 
     // 🧳 ALWAYS REQUIRED ITEMS
@@ -116,8 +156,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     getSmartSuggestions(widget.location, widget.date);
 
     for (var item in suggestions) {
-      await DatabaseService()
-          .insertPackingItem(widget.tripId, item);
+      await DatabaseService().insertPackingItem(widget.tripId, item);
     }
 
     await _loadItems();
@@ -136,8 +175,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final text = itemController.text.trim();
     if (text.isEmpty) return;
 
-    await DatabaseService()
-        .insertPackingItem(widget.tripId, text);
+    await DatabaseService().insertPackingItem(widget.tripId, text);
 
     itemController.clear();
     await _loadItems();
@@ -147,8 +185,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final item = items[index];
     final newDone = item['done'] == 0;
 
-    await DatabaseService()
-        .updatePackingItem(item['id'], newDone);
+    await DatabaseService().updatePackingItem(item['id'], newDone);
 
     await _loadItems();
   }
@@ -156,8 +193,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
   Future<void> _deleteItem(int index) async {
     final item = items[index];
 
-    await DatabaseService()
-        .deletePackingItem(item['id']);
+    await DatabaseService().deletePackingItem(item['id']);
 
     await _loadItems();
   }
@@ -179,7 +215,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
         child: Column(
           children: [
 
-            // 📊 Progress
             if (items.isNotEmpty)
               Text(
                 "Packed: $completedCount / ${items.length}",
@@ -191,17 +226,13 @@ class _PackingChecklistState extends State<PackingChecklist> {
 
             const SizedBox(height: 15),
 
-            // ➕ Add item
             Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: itemController,
-                    style: const TextStyle(color: Colors.black),
                     decoration: InputDecoration(
                       hintText: "Add item",
-                      hintStyle:
-                      const TextStyle(color: Colors.black54),
                       filled: true,
                       fillColor: Colors.white,
                       border: OutlineInputBorder(
@@ -221,7 +252,6 @@ class _PackingChecklistState extends State<PackingChecklist> {
 
             const SizedBox(height: 15),
 
-            // 📦 List
             Expanded(
               child: ListView.builder(
                 itemCount: items.length,
@@ -229,8 +259,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
                   final item = items[index];
 
                   return Card(
-                    margin: const EdgeInsets.symmetric(
-                        vertical: 6),
+                    margin: const EdgeInsets.symmetric(vertical: 6),
                     elevation: 3,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -249,8 +278,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
                         ),
                       ),
                       trailing: IconButton(
-                        icon: const Icon(Icons.delete,
-                            color: Colors.red),
+                        icon: const Icon(Icons.delete, color: Colors.red),
                         onPressed: () => _deleteItem(index),
                       ),
                     ),
