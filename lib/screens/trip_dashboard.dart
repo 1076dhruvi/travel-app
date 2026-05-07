@@ -5,7 +5,7 @@ import 'create_trip.dart';
 import 'packing_checklist.dart';
 import 'emergency.dart';
 import 'package:trip_dashboard/screens/documents_vault.dart';
-
+import 'budget_screen.dart';
 class TripDashboard extends StatelessWidget {
   final Trip trip;
 
@@ -133,7 +133,7 @@ class TripDashboard extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => EmergencyDirectory(
-                        location: trip.location,
+                      location: trip.location.split(",")[0],
                       ),
                     ),
                   );
@@ -146,7 +146,15 @@ class TripDashboard extends StatelessWidget {
               child: ListTile(
                 leading: const Icon(Icons.currency_rupee, color: Colors.green),
                 title: const Text("Budget"),
-                subtitle: const Text("₹0 spent"),
+                subtitle: const Text("Tap to manage budget"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => BudgetScreen(tripId: trip.id!),
+                    ),
+                  );
+                },
               ),
             ),
 

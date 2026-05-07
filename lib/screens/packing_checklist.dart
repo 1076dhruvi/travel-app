@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
-import '../services/packing_service.dart';
 
 class PackingChecklist extends StatefulWidget {
   final int tripId;
@@ -28,7 +27,7 @@ class _PackingChecklistState extends State<PackingChecklist> {
     _initChecklist();
   }
 
-  // 🧠 SMART RULE ENGINE
+  // 🧠 SMART LOGIC (FIXED PRIORITY SYSTEM)
   List<String> getSmartSuggestions(String location, String date) {
     List<String> items = [];
 
@@ -40,20 +39,27 @@ class _PackingChecklistState extends State<PackingChecklist> {
     bool isSummer = (month >= 3 && month <= 6);
     bool isRainy = (month == 7 || month == 8);
 
-    bool isBeach = location.contains("goa") || location.contains("beach");
+    bool isGoa = location.contains("goa");
+    bool isBeach = isGoa || location.contains("beach");
 
     bool isColdPlace =
         location.contains("manali") ||
             location.contains("shimla") ||
             location.contains("kashmir") ||
-            location.contains("ladakh");
+            location.contains("leh") ||
+            location.contains("ladakh") ||
+            location.contains("gulmarg") ||
+            location.contains("nainital") ||
+            location.contains("mussoorie");
 
-    if (isColdPlace && isWinter) {
+    // 🥇 PRIORITY 1: STRONG LOCATION RULES
+
+    if (isColdPlace) {
       items.addAll([
         "Heavy Jacket",
+        "Thermal Wear",
         "Gloves",
-        "Thermal wear",
-        "Woolen socks"
+        "Woolen Socks"
       ]);
     }
 
@@ -62,39 +68,42 @@ class _PackingChecklistState extends State<PackingChecklist> {
         "Sunglasses",
         "Swimwear",
         "Sunscreen",
-        "Flip flops"
+        "Flip Flops"
       ]);
     }
 
-    if (isSummer && !isBeach) {
-      items.addAll([
-        "Light clothes",
-        "Cap",
-        "Sunscreen"
-      ]);
+    // 🥈 PRIORITY 2: WEATHER (only if neutral location)
+    if (!isColdPlace && !isBeach) {
+      if (isSummer) {
+        items.addAll([
+          "Light Clothes",
+          "Cap",
+          "Sunscreen"
+        ]);
+      }
+
+      if (isWinter) {
+        items.addAll([
+          "Light Jacket",
+          "Full Sleeves"
+        ]);
+      }
     }
 
     if (isRainy) {
       items.addAll([
         "Umbrella",
         "Raincoat",
-        "Waterproof bag"
+        "Waterproof Bag"
       ]);
     }
 
-    if (items.isEmpty) {
-      items.addAll([
-        "Comfortable clothes",
-        "Shoes",
-        "Toiletries",
-        "Power bank"
-      ]);
-    }
-
+    // 🧳 ALWAYS REQUIRED ITEMS
     items.addAll([
       "Phone Charger",
       "Wallet",
-      "ID Proof"
+      "ID Proof",
+      "Power Bank"
     ]);
 
     return items.toSet().toList();
@@ -103,10 +112,8 @@ class _PackingChecklistState extends State<PackingChecklist> {
   Future<void> _initChecklist() async {
     await DatabaseService().deletePackingItemsByTrip(widget.tripId);
 
-    final packingService = PackingService();
-
-    final suggestions =
-    await packingService.generateSmartList(widget.location);
+    List<String> suggestions =
+    getSmartSuggestions(widget.location, widget.date);
 
     for (var item in suggestions) {
       await DatabaseService()
@@ -129,7 +136,8 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final text = itemController.text.trim();
     if (text.isEmpty) return;
 
-    await DatabaseService().insertPackingItem(widget.tripId, text);
+    await DatabaseService()
+        .insertPackingItem(widget.tripId, text);
 
     itemController.clear();
     await _loadItems();
@@ -139,14 +147,18 @@ class _PackingChecklistState extends State<PackingChecklist> {
     final item = items[index];
     final newDone = item['done'] == 0;
 
-    await DatabaseService().updatePackingItem(item['id'], newDone);
+    await DatabaseService()
+        .updatePackingItem(item['id'], newDone);
+
     await _loadItems();
   }
 
   Future<void> _deleteItem(int index) async {
     final item = items[index];
 
-    await DatabaseService().deletePackingItem(item['id']);
+    await DatabaseService()
+        .deletePackingItem(item['id']);
+
     await _loadItems();
   }
 
@@ -160,94 +172,94 @@ class _PackingChecklistState extends State<PackingChecklist> {
 
       appBar: AppBar(
         title: const Text("Packing Checklist"),
-        backgroundColor: const Color(0xFF6A1B9A),
-        elevation: 0,
       ),
 
-      body: Column(
-        children: [
-          const SizedBox(height: 12),
+      body: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          children: [
 
-          // 📊 Progress header
-          Text(
-            "Packed: $completedCount / ${items.length}",
-            style: const TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w600,
-              color: Colors.black87,
-            ),
-          ),
+            // 📊 Progress
+            if (items.isNotEmpty)
+              Text(
+                "Packed: $completedCount / ${items.length}",
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 15),
 
-          // ➕ Input box
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Row(
+            // ➕ Add item
+            Row(
               children: [
                 Expanded(
                   child: TextField(
                     controller: itemController,
-                    decoration: const InputDecoration(
-                      hintText: "Add new item...",
+                    style: const TextStyle(color: Colors.black),
+                    decoration: InputDecoration(
+                      hintText: "Add item",
+                      hintStyle:
+                      const TextStyle(color: Colors.black54),
+                      filled: true,
+                      fillColor: Colors.white,
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
                     ),
                     onSubmitted: (_) => _addItem(),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: 10),
                 ElevatedButton(
                   onPressed: _addItem,
-                  child: const Text("Add"),
-                )
+                  child: const Icon(Icons.add),
+                ),
               ],
             ),
-          ),
 
-          const SizedBox(height: 10),
+            const SizedBox(height: 15),
 
-          // 📦 List
-          Expanded(
-            child: ListView.builder(
-              itemCount: items.length,
-              itemBuilder: (context, index) {
-                final item = items[index];
+            // 📦 List
+            Expanded(
+              child: ListView.builder(
+                itemCount: items.length,
+                itemBuilder: (context, index) {
+                  final item = items[index];
 
-                return Card(
-                  margin: const EdgeInsets.symmetric(
-                      horizontal: 12, vertical: 6),
-                  elevation: 3,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: CheckboxListTile(
-                    activeColor: const Color(0xFF6A1B9A),
-                    value: item['done'] == 1,
-                    onChanged: (_) => _toggleItem(index),
-
-                    title: Text(
-                      item['name'],
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                        decoration: item['done'] == 1
-                            ? TextDecoration.lineThrough
-                            : null,
+                  return Card(
+                    margin: const EdgeInsets.symmetric(
+                        vertical: 6),
+                    elevation: 3,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: ListTile(
+                      leading: Checkbox(
+                        value: item['done'] == 1,
+                        onChanged: (_) => _toggleItem(index),
+                      ),
+                      title: Text(
+                        item['name'],
+                        style: TextStyle(
+                          decoration: item['done'] == 1
+                              ? TextDecoration.lineThrough
+                              : null,
+                        ),
+                      ),
+                      trailing: IconButton(
+                        icon: const Icon(Icons.delete,
+                            color: Colors.red),
+                        onPressed: () => _deleteItem(index),
                       ),
                     ),
-
-                    secondary: IconButton(
-                      icon: const Icon(
-                        Icons.delete,
-                        color: Colors.redAccent,
-                      ),
-                      onPressed: () => _deleteItem(index),
-                    ),
-                  ),
-                );
-              },
+                  );
+                },
+              ),
             ),
-          )
-        ],
+          ],
+        ),
       ),
     );
   }
