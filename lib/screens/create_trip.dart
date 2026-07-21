@@ -39,7 +39,7 @@ class _CreateTripState extends State<CreateTrip> {
     if (pickedDate != null) {
       setState(() {
         dateController.text =
-            "${pickedDate.day} ${pickedDate.month}/${pickedDate.year}";
+            "${pickedDate.day}/${pickedDate.month}/${pickedDate.year}";
       });
     }
   }
