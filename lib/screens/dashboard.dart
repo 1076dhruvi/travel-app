@@ -63,13 +63,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final images = [
-      "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
-      "https://images.unsplash.com/photo-1500375592092-40eb2168fd21",
-      "https://images.unsplash.com/photo-1483683804023-6ccdb62f86ef",
-      "https://images.unsplash.com/photo-1469474968028-56623f02e42e",
-    ];
-
+    
     return Scaffold(
       backgroundColor: const Color(0xFFF6F7FB),
 
@@ -200,11 +194,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         topRight: Radius.circular(20),
                                       ),
                                       child: Image.network(
-                                        images[index % images.length],
-                                        height: 140,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                      ),
+  trip.coverImage ??
+      "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
+  height: 140,
+  width: double.infinity,
+  fit: BoxFit.cover,
+)
                                     ),
 
                                     Padding(

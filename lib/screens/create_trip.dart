@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
+import '../services/image_service.dart';
 
 class CreateTrip extends StatefulWidget {
   final Trip? trip;
@@ -43,27 +44,79 @@ class _CreateTripState extends State<CreateTrip> {
     }
   }
 
-  Future<void> saveTrip() async {
-    if (titleController.text.isEmpty ||
-        locationController.text.isEmpty ||
-        dateController.text.isEmpty) return;
+Future<void> saveTrip() async {
 
-    final trip = Trip(
-      id: widget.trip?.id,
-      title: titleController.text,
-      location: locationController.text,
-      date: dateController.text,
-    );
+  print("SAVE BUTTON CLICKED");
 
-    if (widget.trip == null) {
-      await DatabaseService().insertTrip(trip);
-    } else {
-      await DatabaseService().updateTrip(trip);
-    }
+  if (titleController.text.isEmpty ||
+      locationController.text.isEmpty ||
+      dateController.text.isEmpty) {
 
-    Navigator.pop(context, true);
+    print("VALIDATION FAILED");
+    return;
   }
 
+
+  print("VALIDATION PASSED");
+
+
+  String? imageUrl;
+
+
+  try {
+
+    imageUrl = await ImageService()
+        .getCoverImage(locationController.text);
+
+    print("IMAGE URL: $imageUrl");
+
+  } catch(e){
+
+    print("IMAGE ERROR: $e");
+
+  }
+
+
+
+  final trip = Trip(
+
+    id: widget.trip?.id,
+
+    title: titleController.text,
+
+    location: locationController.text,
+
+    date: dateController.text,
+
+    coverImage: imageUrl,
+
+  );
+
+
+
+  if(widget.trip == null){
+
+    await DatabaseService()
+        .insertTrip(trip);
+
+    print("TRIP CREATED");
+
+  }
+
+  else{
+
+    await DatabaseService()
+        .updateTrip(trip);
+
+    print("TRIP UPDATED");
+
+  }
+
+
+
+  Navigator.pop(context,true);
+
+}
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.trip != null;

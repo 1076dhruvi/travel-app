@@ -6,6 +6,7 @@ import 'packing_checklist.dart';
 import 'emergency.dart';
 import 'package:trip_dashboard/screens/documents_vault.dart';
 import 'budget_screen.dart';
+import 'itinerary_screen.dart';
 class TripDashboard extends StatelessWidget {
   final Trip trip;
 
@@ -157,6 +158,25 @@ class TripDashboard extends StatelessWidget {
                 },
               ),
             ),
+
+            // 🗺️ Itinerary
+Card(
+  child: ListTile(
+    leading: const Icon(Icons.map, color: Colors.blue),
+    title: const Text("Itinerary"),
+    subtitle: const Text("Generate your travel plan"),
+    onTap: () {
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => ItineraryScreen(
+            trip: trip,
+          ),
+        ),
+      );
+    },
+  ),
+),
 
             // 📝 Notes
             Card(
