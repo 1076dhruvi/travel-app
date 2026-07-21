@@ -6,6 +6,10 @@ import 'packing_checklist.dart';
 import 'emergency.dart';
 import 'package:trip_dashboard/screens/documents_vault.dart';
 import 'budget_screen.dart';
+import 'itinerary_screen.dart';
+import 'map_screen.dart';
+import '../services/geocoding_service.dart';
+
 class TripDashboard extends StatelessWidget {
   final Trip trip;
 
