@@ -38,7 +38,7 @@ class _CreateTripState extends State<CreateTrip> {
     if (pickedDate != null) {
       setState(() {
         dateController.text =
-            "${pickedDate.day} ${pickedDate.month}/${pickedDate.year}";
+            "${pickedDate.day}/${pickedDate.month}/${pickedDate.year}";
       });
     }
   }
@@ -119,7 +119,7 @@ class _CreateTripState extends State<CreateTrip> {
 
               _buildField(
                 controller: titleController,
-                label: "Destination",
+                label: "Trip Name",
                 icon: Icons.location_city,
               ),
 
