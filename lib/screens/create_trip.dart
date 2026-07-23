@@ -172,7 +172,7 @@ Future<void> saveTrip() async {
 
               _buildField(
                 controller: titleController,
-                label: "Destination",
+                label: "Trip Name",
                 icon: Icons.location_city,
               ),
 
