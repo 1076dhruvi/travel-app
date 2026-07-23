@@ -55,19 +55,6 @@ class DatabaseService {
           )
         ''');
 
-        // ================= TRAVEL DOCUMENTS =================
-        await db.execute('''
-          CREATE TABLE travel_documents(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            trip_id INTEGER,
-            file_name TEXT,
-            file_type TEXT,
-            encrypted_file_path TEXT,
-            original_name TEXT,
-            uploaded_at TEXT
-          )
-        ''');
-
         // ================= EXPENSES =================
         await db.execute('''
           CREATE TABLE expenses(

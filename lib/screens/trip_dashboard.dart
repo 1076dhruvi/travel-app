@@ -6,6 +6,8 @@ import 'packing_checklist.dart';
 import 'emergency.dart';
 import 'package:trip_dashboard/screens/documents_vault.dart';
 import 'budget_screen.dart';
+import 'map_screen.dart';
+import '../services/geocoding_service.dart';
 class TripDashboard extends StatelessWidget {
   final Trip trip;
 
@@ -78,6 +80,47 @@ class TripDashboard extends StatelessWidget {
             ),
 
             const SizedBox(height: 20),
+
+            Card(
+              child: ListTile(
+                leading: const Icon(
+                  Icons.map,
+                  color: Colors.blue,
+                ),
+                title: const Text("Trip Map"),
+                subtitle: const Text("View your destination"),
+                onTap: () async {
+                  final geocoding = GeocodingService();
+
+                  final coordinates =
+                  await geocoding.getCoordinates(trip.location);
+
+                  if (coordinates == null) {
+                    if (!context.mounted) return;
+
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Couldn't find that location."),
+                      ),
+                    );
+                    return;
+                  }
+
+                  if (!context.mounted) return;
+
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => MapScreen(
+                        location: trip.location,
+                        latitude: coordinates["lat"]!,
+                        longitude: coordinates["lon"]!,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ),
 
             // 📄 Documents
             Card(
