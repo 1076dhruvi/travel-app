@@ -161,7 +161,55 @@ class TripDashboard extends StatelessWidget {
                 },
               ),
             ),
+            // 🗺️ Itinerary
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.route, color: Colors.deepPurple),
+                title: const Text("Itinerary"),
+                subtitle: const Text("Generate your personalized itinerary"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ItineraryScreen(trip: trip),
+                    ),
+                  );
+                },
+              ),
+            ),
 
+// 🗺️ Offline Map
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.map, color: Colors.blue),
+                title: const Text("Offline Map"),
+                subtitle: const Text("View destination map"),
+                onTap: () async {
+
+                  final coordinates =
+                  await GeocodingService().getCoordinates(trip.location);
+
+                  if (coordinates != null && context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MapScreen(
+                          location: trip.location,
+                          latitude: coordinates["lat"]!,
+                          longitude: coordinates["lon"]!,
+                        ),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Unable to load map."),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
             // 📝 Notes
             Card(
               child: ListTile(
@@ -170,6 +218,7 @@ class TripDashboard extends StatelessWidget {
                 subtitle: const Text("No notes added"),
               ),
             ),
+
 
             const SizedBox(height: 25),
 

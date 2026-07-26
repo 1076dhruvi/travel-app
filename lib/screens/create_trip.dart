@@ -79,17 +79,12 @@ Future<void> saveTrip() async {
 
 
   final trip = Trip(
-
     id: widget.trip?.id,
-
     title: titleController.text,
-
     location: locationController.text,
-
     date: dateController.text,
-
+    days: widget.trip?.days ?? 1,
     coverImage: imageUrl,
-
   );
 
 
