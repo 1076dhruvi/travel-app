@@ -16,6 +16,7 @@ class _CreateTripState extends State<CreateTrip> {
   final TextEditingController titleController = TextEditingController();
   final TextEditingController locationController = TextEditingController();
   final TextEditingController dateController = TextEditingController();
+  final TextEditingController daysController = TextEditingController();
 
   @override
   void initState() {
@@ -25,6 +26,9 @@ class _CreateTripState extends State<CreateTrip> {
       titleController.text = widget.trip!.title;
       locationController.text = widget.trip!.location;
       dateController.text = widget.trip!.date;
+      daysController.text = widget.trip!.days.toString();
+    } else {
+    daysController.text = "1";
     }
   }
 
@@ -83,7 +87,7 @@ Future<void> saveTrip() async {
     title: titleController.text,
     location: locationController.text,
     date: dateController.text,
-    days: widget.trip?.days ?? 1,
+    days: int.tryParse(daysController.text) ?? 1,
     coverImage: imageUrl,
   );
 
@@ -192,6 +196,15 @@ Future<void> saveTrip() async {
                 ),
               ),
 
+              const SizedBox(height: 15),
+
+              _buildField(
+                controller: daysController,
+                label: "Number of Days",
+                icon: Icons.calendar_today,
+                keyboardType: TextInputType.number,
+              ),
+
               const SizedBox(height: 30),
 
               // 🚀 BUTTON
@@ -233,6 +246,7 @@ Future<void> saveTrip() async {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -249,6 +263,7 @@ Future<void> saveTrip() async {
       ),
       child: TextField(
         controller: controller,
+        keyboardType: keyboardType,
         decoration: InputDecoration(
           icon: Icon(icon, color: const Color(0xFF7C4DFF)),
           labelText: label,

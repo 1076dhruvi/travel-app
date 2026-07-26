@@ -11,6 +11,7 @@ export const getRoute = async (start, end) => {
                 params: {
                     waypoints: `${start.lat},${start.lng}|${end.lat},${end.lng}`,
                     mode: "drive",
+                    avoid: "ferries",
                     apiKey: API_KEY
                 }
             }

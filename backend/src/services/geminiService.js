@@ -26,9 +26,9 @@ export const generateItinerary = async (
 
     const response = await ai.models.generateContent({
 
-        model: "gemini-2.5-flash",
+        model: "gemini-3.1-flash-lite",
 
-        contents: `
+contents: `
 
 You are an expert travel planner.
 
@@ -40,15 +40,24 @@ ${interests.join(", ")}
 Rules:
 
 - Return ONLY valid JSON.
-- Include ONLY real tourist attractions or landmarks.
+- Include ONLY real tourist attractions or landmarks located in ${destination}.
 - Every attraction MUST be searchable on Google Maps.
-- Use official names of places.
+- Use the official Google Maps name of each attraction.
+- Include the city name in every attraction name.
+
+Examples:
+- "Gateway of India, Mumbai"
+- "India Gate, New Delhi"
+- "Tipu Sultan's Summer Palace, Bengaluru"
+- "Baga Beach, Goa"
+
 - Do NOT include activities such as:
   - Street Food Tour
   - Shopping Experience
   - Sunset Cruise
   - Local Market Walk
   - Café Hopping
+
 - Do NOT invent place names.
 - Group nearby attractions together.
 - Maximum 4 attractions per day.
@@ -61,7 +70,7 @@ Format:
     "day": 1,
     "attractions": [
       {
-        "name": "Gateway of India",
+        "name": "Gateway of India, Mumbai",
         "bestTime": "Morning"
       }
     ]
@@ -69,7 +78,6 @@ Format:
 ]
 
 `,
-
         config: {
             temperature: 0.2,
             maxOutputTokens: 1500,
