@@ -4,6 +4,7 @@ const API_KEY = process.env.GEOAPIFY_API_KEY;
 
 export const getRoute = async (start, end) => {
     try {
+
         const response = await axios.get(
             "https://api.geoapify.com/v1/routing",
             {
@@ -15,6 +16,8 @@ export const getRoute = async (start, end) => {
             }
         );
 
+        console.log(JSON.stringify(response.data.features[0].properties, null, 2));
+
         const properties = response.data.features[0].properties;
 
         return {
@@ -25,6 +28,12 @@ export const getRoute = async (start, end) => {
         };
 
     } catch (error) {
-        throw new Error(error.response?.data?.message || error.message);
+
+        console.log("Geoapify Error:");
+        console.log(JSON.stringify(error.response?.data, null, 2));
+
+        throw new Error(
+            error.response?.data?.message || error.message
+        );
     }
 };

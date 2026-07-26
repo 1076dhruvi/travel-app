@@ -3,6 +3,7 @@ class Trip {
   String title;
   String location;
   String date;
+  final int days;
   String? coverImage;
 
   Trip({
@@ -10,6 +11,7 @@ class Trip {
     required this.title,
     required this.location,
     required this.date,
+    required this.days,
     this.coverImage,
   });
 
@@ -20,6 +22,7 @@ class Trip {
       'title': title,
       'location': location,
       'date': date,
+      'days': days,
       'cover_image': coverImage,
     };
   }
@@ -31,6 +34,7 @@ class Trip {
       title: map['title'],
       location: map['location'],
       date: map['date'],
+      days: map['days'] ?? 1,
       coverImage: map['cover_image'],
     );
   }

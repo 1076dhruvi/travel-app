@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/itinerary_service.dart';
 import '../models/trip.dart';
+import '../services/routing_service.dart';
   class ItineraryScreen extends StatefulWidget {
   final Trip trip;
 
@@ -17,6 +18,9 @@ import '../models/trip.dart';
     final Set<String> selectedInterests = {};
 
     final ItineraryService itineraryService = ItineraryService();
+    final RoutingService routingService = RoutingService();
+
+    Map<String, dynamic>? routingData;
 
     Map<String, dynamic>? itineraryData;
 
@@ -146,33 +150,104 @@ Widget build(BuildContext context) {
 
             child:ElevatedButton(
 
-              onPressed:() async {
+              onPressed: () async {
 
-                try{
+
+                try {
+
+
+                  print("Generating itinerary...");
+
+
+// 1. Call Gemini
 
                   final result =
                   await itineraryService.generateItinerary(
 
                     destination: widget.trip.location,
 
-                    days:3,
+                    days: widget.trip.days,
 
-                    interests:selectedInterests.toList(),
+                    interests: selectedInterests.toList(),
 
                   );
 
 
-                  setState((){
+                  print(result);
 
-                    itineraryData=result;
 
+
+// 2. Extract places for routing
+
+                  List<String> places = [];
+                  final seen = <String>{};
+
+                  for (var day in result["itinerary"]) {
+                    for (var place in day["attractions"]) {
+
+                      final name = place["name"].toString().trim();
+
+                      if (name.isEmpty) continue;
+
+                      // Ignore places outside the selected destination
+                      if (name.toLowerCase().contains("bannerghatta biological park")) continue;
+                      if (name.toLowerCase().contains("mysore")) continue;
+                      if (name.toLowerCase().contains("hampi")) continue;
+                      if (name.toLowerCase().contains("coorg")) continue;
+
+                      if (!seen.contains(name)) {
+                        seen.add(name);
+                        places.add(name);
+                      }
+                    }
+                  }
+
+                  print("Places sent to routing:");
+                  print(places);
+
+
+// 3. Optimize route
+
+
+                  final route =
+                  await routingService.optimizeRoute(
+                    widget.trip.location,
+                    places,
+                  );
+
+
+// 4. Update UI
+
+
+                  setState(() {
+                    itineraryData = result;
+                    routingData = route;
                   });
 
 
                 }
+
                 catch(e){
 
-                  print("ERROR: $e");
+
+                  print(
+                      "ERROR : $e"
+                  );
+
+
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(
+
+                      SnackBar(
+
+                        content:Text(
+                            "Failed to generate itinerary"
+                        ),
+
+                      )
+
+                  );
+
 
                 }
 
@@ -212,7 +287,66 @@ Widget build(BuildContext context) {
 
 
           const SizedBox(height:30),
+          if (routingData != null)
 
+            Column(
+
+              crossAxisAlignment: CrossAxisAlignment.start,
+
+              children: [
+
+                const SizedBox(height: 25),
+
+                const Text(
+                  "Optimized Route",
+                  style: TextStyle(
+                    fontSize: 22,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+
+                const SizedBox(height: 10),
+
+                ...List.generate(
+
+                  routingData!["routes"].length,
+
+                      (index) {
+
+                    final route = routingData!["routes"][index];
+
+                    return Card(
+
+                      elevation: 4,
+
+                      margin: const EdgeInsets.only(bottom: 12),
+
+                      child: ListTile(
+
+                        leading: const Icon(
+                          Icons.route,
+                          color: Colors.deepPurple,
+                        ),
+
+                        title: Text(
+                          "${route["from"]} → ${route["to"]}",
+                        ),
+
+                        subtitle: Text(
+                          "Distance: ${route["distance"]}\nTime: ${route["time"]}",
+                        ),
+
+                      ),
+
+                    );
+
+                  },
+
+                ),
+
+              ],
+
+            ),
 
 
           if(itineraryData != null)

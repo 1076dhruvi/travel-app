@@ -2,22 +2,34 @@ import { geocodePlace } from "../services/geocodeService.js";
 import { getRoute } from "../services/routingService.js";
 
 export const optimizeItinerary = async (req, res) => {
+
     try {
 
-        const { places } = req.body;
+        const { city, places } = req.body;
 
-        // Convert place names to coordinates
         const coordinates = [];
 
         for (const place of places) {
-            const location = await geocodePlace(place);
+
+            const location = await geocodePlace(
+                place,
+                req.body.city
+            );
+
             coordinates.push(location);
         }
 
-        // Calculate routes between consecutive places
         const routes = [];
 
         for (let i = 0; i < coordinates.length - 1; i++) {
+
+            console.log(
+                "Routing from:",
+                coordinates[i],
+                "to:",
+                coordinates[i + 1]
+            );
+
             const route = await getRoute(
                 coordinates[i],
                 coordinates[i + 1]
@@ -26,7 +38,7 @@ export const optimizeItinerary = async (req, res) => {
             routes.push(route);
         }
 
-        res.status(200).json({
+        res.json({
             success: true,
             coordinates,
             routes
@@ -34,10 +46,13 @@ export const optimizeItinerary = async (req, res) => {
 
     } catch (error) {
 
+        console.log("OPTIMIZE ERROR:", error.message);
+
         res.status(500).json({
             success: false,
             error: error.message
         });
 
     }
+
 };
