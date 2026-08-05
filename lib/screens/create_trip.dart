@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
+import '../services/image_service.dart';
 
 class CreateTrip extends StatefulWidget {
   final Trip? trip;
@@ -15,6 +16,7 @@ class _CreateTripState extends State<CreateTrip> {
   final TextEditingController titleController = TextEditingController();
   final TextEditingController locationController = TextEditingController();
   final TextEditingController dateController = TextEditingController();
+  final TextEditingController daysController = TextEditingController();
 
   @override
   void initState() {
@@ -24,6 +26,9 @@ class _CreateTripState extends State<CreateTrip> {
       titleController.text = widget.trip!.title;
       locationController.text = widget.trip!.location;
       dateController.text = widget.trip!.date;
+      daysController.text = widget.trip!.days.toString();
+    } else {
+    daysController.text = "1";
     }
   }
 
@@ -43,27 +48,74 @@ class _CreateTripState extends State<CreateTrip> {
     }
   }
 
-  Future<void> saveTrip() async {
-    if (titleController.text.isEmpty ||
-        locationController.text.isEmpty ||
-        dateController.text.isEmpty) return;
+Future<void> saveTrip() async {
 
-    final trip = Trip(
-      id: widget.trip?.id,
-      title: titleController.text,
-      location: locationController.text,
-      date: dateController.text,
-    );
+  print("SAVE BUTTON CLICKED");
 
-    if (widget.trip == null) {
-      await DatabaseService().insertTrip(trip);
-    } else {
-      await DatabaseService().updateTrip(trip);
-    }
+  if (titleController.text.isEmpty ||
+      locationController.text.isEmpty ||
+      dateController.text.isEmpty) {
 
-    Navigator.pop(context, true);
+    print("VALIDATION FAILED");
+    return;
   }
 
+
+  print("VALIDATION PASSED");
+
+
+  String? imageUrl;
+
+
+  try {
+
+    imageUrl = await ImageService()
+        .getCoverImage(locationController.text);
+
+    print("IMAGE URL: $imageUrl");
+
+  } catch(e){
+
+    print("IMAGE ERROR: $e");
+
+  }
+
+
+
+  final trip = Trip(
+    id: widget.trip?.id,
+    title: titleController.text,
+    location: locationController.text,
+    date: dateController.text,
+    days: int.tryParse(daysController.text) ?? 1,
+    coverImage: imageUrl,
+  );
+
+
+
+  if(widget.trip == null){
+
+    await DatabaseService()
+        .insertTrip(trip);
+
+    print("TRIP CREATED");
+
+  }
+
+  else{
+
+    await DatabaseService()
+        .updateTrip(trip);
+
+    print("TRIP UPDATED");
+
+  }
+
+
+
+  Navigator.pop(context,true);
+
+}
   @override
   Widget build(BuildContext context) {
     final isEditing = widget.trip != null;
@@ -144,6 +196,15 @@ class _CreateTripState extends State<CreateTrip> {
                 ),
               ),
 
+              const SizedBox(height: 15),
+
+              _buildField(
+                controller: daysController,
+                label: "Number of Days",
+                icon: Icons.calendar_today,
+                keyboardType: TextInputType.number,
+              ),
+
               const SizedBox(height: 30),
 
               // 🚀 BUTTON
@@ -185,6 +246,7 @@ class _CreateTripState extends State<CreateTrip> {
     required TextEditingController controller,
     required String label,
     required IconData icon,
+    TextInputType keyboardType = TextInputType.text,
   }) {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -201,6 +263,7 @@ class _CreateTripState extends State<CreateTrip> {
       ),
       child: TextField(
         controller: controller,
+        keyboardType: keyboardType,
         decoration: InputDecoration(
           icon: Icon(icon, color: const Color(0xFF7C4DFF)),
           labelText: label,

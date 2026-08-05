@@ -6,8 +6,10 @@ import 'packing_checklist.dart';
 import 'emergency.dart';
 import 'package:trip_dashboard/screens/documents_vault.dart';
 import 'budget_screen.dart';
+import 'itinerary_screen.dart';
 import 'map_screen.dart';
 import '../services/geocoding_service.dart';
+
 class TripDashboard extends StatelessWidget {
   final Trip trip;
 
@@ -80,47 +82,6 @@ class TripDashboard extends StatelessWidget {
             ),
 
             const SizedBox(height: 20),
-
-            Card(
-              child: ListTile(
-                leading: const Icon(
-                  Icons.map,
-                  color: Colors.blue,
-                ),
-                title: const Text("Trip Map"),
-                subtitle: const Text("View your destination"),
-                onTap: () async {
-                  final geocoding = GeocodingService();
-
-                  final coordinates =
-                  await geocoding.getCoordinates(trip.location);
-
-                  if (coordinates == null) {
-                    if (!context.mounted) return;
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Couldn't find that location."),
-                      ),
-                    );
-                    return;
-                  }
-
-                  if (!context.mounted) return;
-
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (_) => MapScreen(
-                        location: trip.location,
-                        latitude: coordinates["lat"]!,
-                        longitude: coordinates["lon"]!,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
 
             // 📄 Documents
             Card(
@@ -200,7 +161,55 @@ class TripDashboard extends StatelessWidget {
                 },
               ),
             ),
+            // 🗺️ Itinerary
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.route, color: Colors.deepPurple),
+                title: const Text("Itinerary"),
+                subtitle: const Text("Generate your personalized itinerary"),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => ItineraryScreen(trip: trip),
+                    ),
+                  );
+                },
+              ),
+            ),
 
+// 🗺️ Offline Map
+            Card(
+              child: ListTile(
+                leading: const Icon(Icons.map, color: Colors.blue),
+                title: const Text("Offline Map"),
+                subtitle: const Text("View destination map"),
+                onTap: () async {
+
+                  final coordinates =
+                  await GeocodingService().getCoordinates(trip.location);
+
+                  if (coordinates != null && context.mounted) {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MapScreen(
+                          location: trip.location,
+                          latitude: coordinates["lat"]!,
+                          longitude: coordinates["lon"]!,
+                        ),
+                      ),
+                    );
+                  } else {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text("Unable to load map."),
+                      ),
+                    );
+                  }
+                },
+              ),
+            ),
             // 📝 Notes
             Card(
               child: ListTile(
@@ -209,6 +218,7 @@ class TripDashboard extends StatelessWidget {
                 subtitle: const Text("No notes added"),
               ),
             ),
+
 
             const SizedBox(height: 25),
 

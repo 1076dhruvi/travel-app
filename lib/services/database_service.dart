@@ -17,20 +17,21 @@ class DatabaseService {
 
     return await openDatabase(
       dbPath,
-      version: 4,
+      version: 5,
       onCreate: (db, version) async {
 
         // ================= TRIPS =================
-        await db.execute('''
-          CREATE TABLE trips(
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            title TEXT,
-            location TEXT,
-            date TEXT,
-            budget REAL DEFAULT 0,
-            days INTEGER DEFAULT 1
-          )
-        ''');
+      await db.execute('''
+  CREATE TABLE trips(
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    title TEXT,
+    location TEXT,
+    date TEXT,
+    budget REAL DEFAULT 0,
+    days INTEGER DEFAULT 1,
+    cover_image TEXT
+  )
+''');
 
         // ================= DOCUMENTS =================
         await db.execute('''
@@ -54,6 +55,9 @@ class DatabaseService {
             done INTEGER
           )
         ''');
+
+        // ================= TRAVEL DOCUMENTS =================
+       
 
         // ================= EXPENSES =================
         await db.execute('''
@@ -122,6 +126,12 @@ class DatabaseService {
             )
           ''');
         }
+
+        if(oldVersion < 5){
+ await db.execute(
+   "ALTER TABLE trips ADD COLUMN cover_image TEXT"
+ );
+}
       },
     );
   }
