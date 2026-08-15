@@ -4,6 +4,7 @@ import '../services/database_service.dart';
 import 'create_trip.dart';
 import 'packing_checklist.dart';
 import 'emergency.dart';
+import 'notes_screen.dart';
 import 'package:trip_dashboard/screens/documents_vault.dart';
 import 'budget_screen.dart';
 import 'itinerary_screen.dart';
@@ -211,11 +212,26 @@ class TripDashboard extends StatelessWidget {
               ),
             ),
             // 📝 Notes
+            // Notes
             Card(
               child: ListTile(
-                leading: const Icon(Icons.note, color: Colors.orange),
+                leading: const Icon(
+                  Icons.note,
+                  color: Colors.orange,
+                ),
                 title: const Text("Notes"),
-                subtitle: const Text("No notes added"),
+                subtitle: const Text("Add and manage your trip notes"),
+                trailing: const Icon(Icons.arrow_forward_ios, size: 16),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (context) => NotesScreen(
+                        tripId: trip.id!,
+                      ),
+                    ),
+                  );
+                },
               ),
             ),
 

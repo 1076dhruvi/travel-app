@@ -4,6 +4,10 @@ const API_KEY = process.env.GEOAPIFY_API_KEY;
 
 export const getRoute = async (start, end) => {
     try {
+        console.log("\nROUTE:");
+        console.log(`${start.name} → ${end.name}`);
+        console.log("START:", start.lat, start.lng);
+        console.log("END:", end.lat, end.lng);
 
         const response = await axios.get(
             "https://api.geoapify.com/v1/routing",
@@ -17,9 +21,19 @@ export const getRoute = async (start, end) => {
             }
         );
 
-        console.log(JSON.stringify(response.data.features[0].properties, null, 2));
+        if (
+            !response.data.features ||
+            response.data.features.length === 0
+        ) {
+            throw new Error(
+                `No route found from ${start.name} to ${end.name}`
+            );
+        }
 
         const properties = response.data.features[0].properties;
+
+        console.log("ROUTE DISTANCE:", properties.distance, "meters");
+        console.log("ROUTE TIME:", properties.time, "seconds");
 
         return {
             from: start.name,
@@ -29,9 +43,10 @@ export const getRoute = async (start, end) => {
         };
 
     } catch (error) {
-
         console.log("Geoapify Error:");
-        console.log(JSON.stringify(error.response?.data, null, 2));
+        console.log(
+            JSON.stringify(error.response?.data, null, 2)
+        );
 
         throw new Error(
             error.response?.data?.message || error.message

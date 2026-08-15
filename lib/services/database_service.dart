@@ -1,6 +1,7 @@
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart';
 import '../models/trip.dart';
+import '../models/note.dart';
 import '../models/document.dart';
 
 class DatabaseService {
@@ -17,8 +18,9 @@ class DatabaseService {
 
     return await openDatabase(
       dbPath,
-      version: 5,
+      version: 7,
       onCreate: (db, version) async {
+
 
         // ================= TRIPS =================
       await db.execute('''
@@ -57,7 +59,7 @@ class DatabaseService {
         ''');
 
         // ================= TRAVEL DOCUMENTS =================
-       
+
 
         // ================= EXPENSES =================
         await db.execute('''
@@ -70,6 +72,19 @@ class DatabaseService {
             date TEXT
           )
         ''');
+
+      await db.execute('''
+  CREATE TABLE notes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    trip_id INTEGER NOT NULL,
+    title TEXT NOT NULL,
+    content TEXT NOT NULL,
+    timestamp TEXT NOT NULL,
+    color INTEGER NOT NULL,
+    is_pinned INTEGER NOT NULL DEFAULT 0,
+    reminder_time TEXT
+  )
+''');
       },
 
       onUpgrade: (db, oldVersion, newVersion) async {
@@ -125,6 +140,20 @@ class DatabaseService {
               date TEXT
             )
           ''');
+
+            if (oldVersion < 5) {
+              await db.execute('''
+        CREATE TABLE notes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        trip_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        content TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        color INTEGER NOT NULL,
+        is_pinned INTEGER NOT NULL DEFAULT 0
+      )
+    ''');
+          }
         }
 
         if(oldVersion < 5){
@@ -132,6 +161,11 @@ class DatabaseService {
    "ALTER TABLE trips ADD COLUMN cover_image TEXT"
  );
 }
+        if (oldVersion < 7) {
+          await db.execute(
+            'ALTER TABLE notes ADD COLUMN reminder_time TEXT',
+          );
+        }
       },
     );
   }
@@ -342,6 +376,62 @@ class DatabaseService {
       whereArgs: [id],
     );
   }
+  Future<int> insertNote(Note note) async {
+    final db = await database;
+
+    return await db.insert(
+      'notes',
+      note.toMap(),
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<List<Note>> getNotesByTrip(int tripId) async {
+    final db = await database;
+
+    final result = await db.query(
+      'notes',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+      orderBy: 'is_pinned DESC, id DESC',
+    );
+
+    return result.map((map) => Note.fromMap(map)).toList();
+  }
+
+  Future<int> updateNote(Note note) async {
+    final db = await database;
+
+    return await db.update(
+      'notes',
+      note.toMap(),
+      where: 'id = ?',
+      whereArgs: [note.id],
+    );
+  }
+
+  Future<int> deleteNote(int id) async {
+    final db = await database;
+
+    return await db.delete(
+      'notes',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  Future<void> toggleNotePin(Note note) async {
+    final db = await database;
+
+    await db.update(
+      'notes',
+      {
+        'is_pinned': note.isPinned ? 0 : 1,
+      },
+      where: 'id = ?',
+      whereArgs: [note.id],
+    );
+  }
 
   // =========================================================
   // EXPENSES
@@ -390,4 +480,5 @@ class DatabaseService {
       whereArgs: [id],
     );
   }
+
 }
