@@ -15,9 +15,8 @@ class ItineraryService {
 
 
     final url = Uri.parse(
-      "http://10.0.2.2:3000/api/itinerary/generate",
+      "http://192.168.1.10:3000/api/itinerary/generate",
     );
-
 
     final response = await http.post(
 

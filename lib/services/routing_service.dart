@@ -9,7 +9,7 @@ class RoutingService {
       ) async {
 
     final url = Uri.parse(
-      "http://10.0.2.2:3000/api/routing/optimize",
+      "http://192.168.1.10:3000/api/routing/optimize",
     );
 
     final response = await http.post(

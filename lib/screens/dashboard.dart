@@ -194,12 +194,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                                         topRight: Radius.circular(20),
                                       ),
                                       child: Image.network(
-  trip.coverImage ??
-      "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
-  height: 140,
-  width: double.infinity,
-  fit: BoxFit.cover,
-)
+                                        trip.coverImage ?? "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
+                                        height: 140,
+                                        width: double.infinity,
+                                        fit: BoxFit.cover,
+                                      )
                                     ),
 
                                     Padding(
