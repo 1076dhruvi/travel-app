@@ -40,6 +40,7 @@ class TripDashboard extends StatelessWidget {
       appBar: AppBar(
         title: Text(trip.title),
         backgroundColor: Colors.deepPurple,
+        foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -91,7 +92,7 @@ class TripDashboard extends StatelessWidget {
                 title: const Text("Documents Vault"),
                 subtitle: const Text("Tap to open secure vault"),
                 onTap: () {
-                  print("Documents tapped");
+                  debugPrint("Documents tapped");
 
                   Navigator.push(
                     context,
@@ -127,7 +128,7 @@ class TripDashboard extends StatelessWidget {
               ),
             ),
 
-            // 🚨 Emergency Directory (NEW)
+            // 🚨 Emergency Directory
             Card(
               child: ListTile(
                 leading: const Icon(Icons.warning, color: Colors.red),
@@ -138,7 +139,7 @@ class TripDashboard extends StatelessWidget {
                     context,
                     MaterialPageRoute(
                       builder: (context) => EmergencyDirectory(
-                      location: trip.location.split(",")[0],
+                        location: trip.location.split(",")[0],
                       ),
                     ),
                   );
@@ -162,6 +163,7 @@ class TripDashboard extends StatelessWidget {
                 },
               ),
             ),
+
             // 🗺️ Itinerary
             Card(
               child: ListTile(
@@ -179,14 +181,13 @@ class TripDashboard extends StatelessWidget {
               ),
             ),
 
-// 🗺️ Offline Map
+            // 🗺️ Offline Map
             Card(
               child: ListTile(
                 leading: const Icon(Icons.map, color: Colors.blue),
                 title: const Text("Offline Map"),
                 subtitle: const Text("View destination map"),
                 onTap: () async {
-
                   final coordinates =
                   await GeocodingService().getCoordinates(trip.location);
 
@@ -195,24 +196,31 @@ class TripDashboard extends StatelessWidget {
                       context,
                       MaterialPageRoute(
                         builder: (_) => MapScreen(
-                          location: trip.location,
-                          latitude: coordinates["lat"]!,
-                          longitude: coordinates["lon"]!,
+                          title: trip.location,
+                          places: [
+                            ItineraryPlace(
+                              name: trip.location,
+                              latitude: coordinates["lat"]!,
+                              longitude: coordinates["lon"]!,
+                            ),
+                          ],
                         ),
                       ),
                     );
                   } else {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text("Unable to load map."),
-                      ),
-                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("Unable to load map."),
+                        ),
+                      );
+                    }
                   }
                 },
               ),
             ),
+
             // 📝 Notes
-            // Notes
             Card(
               child: ListTile(
                 leading: const Icon(
@@ -235,20 +243,19 @@ class TripDashboard extends StatelessWidget {
               ),
             ),
 
-
             const SizedBox(height: 25),
 
             // ✏️ Edit & 🗑 Delete
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-
                 // Edit
                 ElevatedButton.icon(
                   icon: const Icon(Icons.edit),
                   label: const Text("Edit"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orangeAccent),
+                      backgroundColor: Colors.orangeAccent,
+                      foregroundColor: Colors.white),
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -256,7 +263,9 @@ class TripDashboard extends StatelessWidget {
                         builder: (context) => CreateTrip(trip: trip),
                       ),
                     ).then((value) {
-                      if (value == true) Navigator.pop(context, true);
+                      if (value == true && context.mounted) {
+                        Navigator.pop(context, true);
+                      }
                     });
                   },
                 ),
@@ -266,12 +275,15 @@ class TripDashboard extends StatelessWidget {
                   icon: const Icon(Icons.delete),
                   label: const Text("Delete"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent),
+                      backgroundColor: Colors.redAccent,
+                      foregroundColor: Colors.white),
                   onPressed: () async {
-  if (trip.id == null) return;
+                    if (trip.id == null) return;
 
-  await DatabaseService().deleteTrip(trip.id!);
-  Navigator.pop(context, true);
+                    await DatabaseService().deleteTrip(trip.id!);
+                    if (context.mounted) {
+                      Navigator.pop(context, true);
+                    }
                   },
                 ),
               ],

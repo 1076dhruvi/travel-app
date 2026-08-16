@@ -2,54 +2,57 @@ import axios from "axios";
 
 const API_KEY = process.env.GEOAPIFY_API_KEY;
 
+/**
+ * Calculates a driving route between two points using the Geoapify Routing API.
+ *
+ * @param {Object} start - Starting point object: { name: string, lat: number, lng: number }
+ * @param {Object} end - Destination point object: { name: string, lat: number, lng: number }
+ * @returns {Promise<{from: string, to: string, distance: string, time: string}>}
+ */
 export const getRoute = async (start, end) => {
+    if (!API_KEY) {
+        throw new Error("GEOAPIFY_API_KEY is not defined in environment variables.");
+    }
+
+    if (!start?.lat || !start?.lng || !end?.lat || !end?.lng) {
+        throw new Error("Invalid start or end coordinates provided.");
+    }
+
     try {
-        console.log("\nROUTE:");
-        console.log(`${start.name} → ${end.name}`);
-        console.log("START:", start.lat, start.lng);
-        console.log("END:", end.lat, end.lng);
+        console.log(`\nCalculating Route: ${start.name || "Start"} → ${end.name || "End"}`);
 
-        const response = await axios.get(
-            "https://api.geoapify.com/v1/routing",
-            {
-                params: {
-                    waypoints: `${start.lat},${start.lng}|${end.lat},${end.lng}`,
-                    mode: "drive",
-                    avoid: "ferries",
-                    apiKey: API_KEY
-                }
-            }
-        );
+        const response = await axios.get("https://api.geoapify.com/v1/routing", {
+            params: {
+                waypoints: `${start.lat},${start.lng}|${end.lat},${end.lng}`,
+                mode: "drive",
+                avoid: "ferries",
+                apiKey: API_KEY,
+            },
+            timeout: 10000, // 10-second request timeout
+        });
 
-        if (
-            !response.data.features ||
-            response.data.features.length === 0
-        ) {
-            throw new Error(
-                `No route found from ${start.name} to ${end.name}`
-            );
+        const feature = response.data?.features?.[0];
+
+        if (!feature) {
+            throw new Error(`No route found from ${start.name} to ${end.name}`);
         }
 
-        const properties = response.data.features[0].properties;
-
-        console.log("ROUTE DISTANCE:", properties.distance, "meters");
-        console.log("ROUTE TIME:", properties.time, "seconds");
+        const { distance, time } = feature.properties;
 
         return {
             from: start.name,
             to: end.name,
-            distance: (properties.distance / 1000).toFixed(2) + " km",
-            time: Math.round(properties.time / 60) + " min"
+            distance: `${(distance / 1000).toFixed(2)} km`,
+            time: `${Math.round(time / 60)} min`,
         };
-
     } catch (error) {
-        console.log("Geoapify Error:");
-        console.log(
-            JSON.stringify(error.response?.data, null, 2)
-        );
+        if (axios.isAxiosError(error)) {
+            console.error("Geoapify API Error Details:", error.response?.data || error.message);
+            const apiMessage = error.response?.data?.message;
+            throw new Error(apiMessage || `Geoapify API failed with status ${error.response?.status || 'UNKNOWN'}`);
+        }
 
-        throw new Error(
-            error.response?.data?.message || error.message
-        );
+        console.error("Route calculation error:", error.message);
+        throw error;
     }
 };

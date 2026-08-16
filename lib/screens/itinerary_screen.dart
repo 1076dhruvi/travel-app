@@ -1,7 +1,10 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import '../services/itinerary_service.dart';
 import '../models/trip.dart';
 import '../services/routing_service.dart';
+import '../services/geocoding_service.dart';
+import 'map_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
   final Trip trip;
@@ -20,9 +23,11 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
   final ItineraryService itineraryService = ItineraryService();
   final RoutingService routingService = RoutingService();
+  final GeocodingService geocodingService = GeocodingService();
 
   Map<String, dynamic>? routingData;
   Map<String, dynamic>? itineraryData;
+  List<ItineraryPlace> itineraryMapPlaces = [];
   bool isLoading = false;
 
   final List<String> interests = [
@@ -33,6 +38,61 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     "Adventure",
     "Shopping",
   ];
+
+  double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
+    const p = 0.017453292519943295;
+    final a = 0.5 -
+        math.cos((lat2 - lat1) * p) / 2 +
+        math.cos(lat1 * p) * math.cos(lat2 * p) * (1 - math.cos((lon2 - lon1) * p)) / 2;
+    return 12742 * math.asin(math.sqrt(a));
+  }
+
+  // Optimize places BY DAY strictly so days never mix up their colors
+  List<ItineraryPlace> _optimizePlacesByProximity(List<ItineraryPlace> places) {
+    if (places.isEmpty) return places;
+
+    // Group places by day number
+    Map<int, List<ItineraryPlace>> groupedByDay = {};
+    for (var place in places) {
+      groupedByDay.putIfAbsent(place.dayNumber, () => []).add(place);
+    }
+
+    List<ItineraryPlace> finalOptimizedList = [];
+
+    // Optimize route order within each day individually
+    groupedByDay.forEach((dayNum, dayPlaces) {
+      if (dayPlaces.length <= 2) {
+        finalOptimizedList.addAll(dayPlaces);
+      } else {
+        List<ItineraryPlace> unvisited = List.from(dayPlaces);
+        List<ItineraryPlace> sortedDay = [unvisited.removeAt(0)];
+
+        while (unvisited.isNotEmpty) {
+          final current = sortedDay.last;
+          int nearestIndex = 0;
+          double minDistance = double.infinity;
+
+          for (int i = 0; i < unvisited.length; i++) {
+            final dist = _calculateDistance(
+              current.latitude,
+              current.longitude,
+              unvisited[i].latitude,
+              unvisited[i].longitude,
+            );
+            if (dist < minDistance) {
+              minDistance = dist;
+              nearestIndex = i;
+            }
+          }
+          sortedDay.add(unvisited.removeAt(nearestIndex));
+        }
+
+        finalOptimizedList.addAll(sortedDay);
+      }
+    });
+
+    return finalOptimizedList;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -119,59 +179,69 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                   });
 
                   try {
-                    print("Generating itinerary...");
+                    debugPrint("Generating itinerary...");
 
-                    // 1. Call Gemini via backend service
-                    final result =
-                    await itineraryService.generateItinerary(
+                    final result = await itineraryService.generateItinerary(
                       destination: widget.trip.location,
                       days: widget.trip.days,
                       interests: selectedInterests.toList(),
                     );
 
-                    print("Itinerary Result: $result");
-
-                    // 2. Extract and sanitize places for routing
                     List<String> places = [];
+                    List<ItineraryPlace> rawMapPlaces = [];
                     final seen = <String>{};
 
                     if (result != null && result["itinerary"] != null) {
-                      for (var day in result["itinerary"]) {
-                        if (day["attractions"] != null) {
-                          for (var place in day["attractions"]) {
-                            String name =
-                                place["name"]?.toString().trim() ?? "";
+                      for (var dayData in result["itinerary"]) {
+                        int dayNum = dayData["day"] is int
+                            ? dayData["day"]
+                            : int.tryParse(dayData["day"].toString()) ?? 1;
 
+                        String dayTitle = "Day $dayNum";
+
+                        if (dayData["attractions"] != null) {
+                          for (var place in dayData["attractions"]) {
+                            String name = place["name"]?.toString().trim() ?? "";
                             if (name.isEmpty) continue;
 
-                            // Strip parenthetical details like "(e.g., Cochin Cooking Class)"
-                            name = name
-                                .replaceAll(
-                                RegExp(r'\s*\([^)]*\)'), '')
-                                .trim();
-
-                            // Ignore unwanted regional places outside scope
-                            final lower = name.toLowerCase();
-                            if (lower.contains(
-                                "bannerghatta biological park") ||
-                                lower.contains("mysore") ||
-                                lower.contains("hampi") ||
-                                lower.contains("coorg")) {
-                              continue;
-                            }
+                            name = name.replaceAll(RegExp(r'\s*\([^)]*\)'), '').trim();
 
                             if (name.isNotEmpty && !seen.contains(name)) {
                               seen.add(name);
                               places.add(name);
+
+                              double? lat = place["lat"] != null ? (place["lat"] as num).toDouble() : null;
+                              double? lon = place["lon"] != null ? (place["lon"] as num).toDouble() : null;
+
+                              if (lat == null || lon == null) {
+                                final searchQuery = "$name, ${widget.trip.location}";
+                                final coords = await geocodingService.getCoordinates(searchQuery);
+                                if (coords != null) {
+                                  lat = coords["lat"];
+                                  lon = coords["lon"];
+                                }
+                              }
+
+                              if (lat != null && lon != null) {
+                                rawMapPlaces.add(
+                                  ItineraryPlace(
+                                    name: name,
+                                    latitude: lat,
+                                    longitude: lon,
+                                    day: dayTitle,
+                                    dayNumber: dayNum, // Strictly binding the day number here
+                                  ),
+                                );
+                              }
                             }
                           }
                         }
                       }
                     }
 
-                    print("Places sent to routing: $places");
+                    // Sort places geographically strictly inside each Day boundary
+                    List<ItineraryPlace> optimizedPlaces = _optimizePlacesByProximity(rawMapPlaces);
 
-                    // 3. Optimize route (Isolated so geocoding errors do NOT crash itinerary display)
                     Map<String, dynamic>? route;
                     if (places.isNotEmpty) {
                       try {
@@ -180,18 +250,17 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                           places,
                         );
                       } catch (routingError) {
-                        print(
-                            "Routing Service Error (Non-Fatal): $routingError");
+                        debugPrint("Routing Service Error: $routingError");
                       }
                     }
 
-                    // 4. Update UI with itinerary (even if route optimization failed)
                     setState(() {
                       itineraryData = result;
                       routingData = route;
+                      itineraryMapPlaces = optimizedPlaces;
                     });
                   } catch (e) {
-                    print("ERROR DETAILS: $e");
+                    debugPrint("ERROR DETAILS: $e");
 
                     if (mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
@@ -239,6 +308,38 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               ),
             ),
             const SizedBox(height: 30),
+
+            // 🗺️ View Route On Map Action Button
+            if (itineraryMapPlaces.isNotEmpty)
+              Container(
+                width: double.infinity,
+                margin: const EdgeInsets.only(bottom: 20),
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.map, color: Colors.white),
+                  label: Text("View Route Map (${itineraryMapPlaces.length} Stops)"),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.deepPurple,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (_) => MapScreen(
+                          title: "${widget.trip.location} Route Map",
+                          places: itineraryMapPlaces,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+              ),
+
+            // Optimized Routes List
             if (routingData != null &&
                 routingData!["routes"] != null &&
                 (routingData!["routes"] as List).isNotEmpty)
@@ -276,6 +377,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                   const SizedBox(height: 25),
                 ],
               ),
+
+            // Generated Itinerary Display
             if (itineraryData != null &&
                 itineraryData!["itinerary"] != null &&
                 (itineraryData!["itinerary"] as List).isNotEmpty)
@@ -318,16 +421,19 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                                     final place = day["attractions"][i];
 
                                     return ListTile(
-                                      contentPadding: EdgeInsets.zero,
-                                      leading: const Icon(
-                                        Icons.location_on,
-                                        color: Colors.deepPurple,
+                                      leading: CircleAvatar(
+                                        backgroundColor: Colors.deepPurple,
+                                        foregroundColor: Colors.white,
+                                        child: Text("${i + 1}"),
                                       ),
                                       title: Text(
-                                        place["name"] ?? "Unknown place",
+                                        place["name"] ?? "",
+                                        style: const TextStyle(
+                                          fontWeight: FontWeight.bold,
+                                        ),
                                       ),
                                       subtitle: Text(
-                                        "${place["description"] != null ? "${place["description"]}\n" : ""}Best time: ${place["bestTime"] ?? "Anytime"}",
+                                        place["description"] ?? "",
                                       ),
                                     );
                                   },
