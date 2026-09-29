@@ -1,9 +1,11 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
-import '../services/itinerary_service.dart';
 import '../models/trip.dart';
-import '../services/routing_service.dart';
+import '../services/database_service.dart';
 import '../services/geocoding_service.dart';
+import '../services/itinerary_service.dart';
+import '../services/routing_service.dart';
 import 'map_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
@@ -24,6 +26,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   final ItineraryService itineraryService = ItineraryService();
   final RoutingService routingService = RoutingService();
   final GeocodingService geocodingService = GeocodingService();
+  final DatabaseService databaseService = DatabaseService();
 
   Map<String, dynamic>? routingData;
   Map<String, dynamic>? itineraryData;
@@ -39,6 +42,67 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     "Shopping",
   ];
 
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedItinerary();
+  }
+
+  Future<void> _loadSavedItinerary() async {
+    try {
+      final savedJson = await databaseService.getItinerary(widget.trip.id!);
+      if (savedJson != null) {
+        final Map<String, dynamic> parsed = jsonDecode(savedJson);
+
+        List<ItineraryPlace> loadedPlaces = [];
+        if (parsed["mapPlaces"] != null) {
+          for (var p in parsed["mapPlaces"]) {
+            loadedPlaces.add(
+              ItineraryPlace(
+                name: p["name"] ?? "",
+                latitude: (p["latitude"] as num).toDouble(),
+                longitude: (p["longitude"] as num).toDouble(),
+                day: p["day"] ?? "Day 1",
+                dayNumber: p["dayNumber"] ?? 1,
+              ),
+            );
+          }
+        }
+
+        setState(() {
+          itineraryData = parsed["itineraryData"];
+          routingData = parsed["routingData"];
+          itineraryMapPlaces = loadedPlaces;
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading saved itinerary: $e");
+    }
+  }
+
+  Future<void> _saveCurrentItinerary() async {
+    if (widget.trip.id == null) return;
+
+    final dataToSave = {
+      "itineraryData": itineraryData,
+      "routingData": routingData,
+      "mapPlaces": itineraryMapPlaces
+          .map((p) => {
+        "name": p.name,
+        "latitude": p.latitude,
+        "longitude": p.longitude,
+        "day": p.day,
+        "dayNumber": p.dayNumber,
+      })
+          .toList(),
+    };
+
+    await databaseService.saveItinerary(
+      widget.trip.id!,
+      jsonEncode(dataToSave),
+    );
+  }
+
   double _calculateDistance(double lat1, double lon1, double lat2, double lon2) {
     const p = 0.017453292519943295;
     final a = 0.5 -
@@ -47,11 +111,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     return 12742 * math.asin(math.sqrt(a));
   }
 
-  // Optimize places BY DAY strictly so days never mix up their colors
   List<ItineraryPlace> _optimizePlacesByProximity(List<ItineraryPlace> places) {
     if (places.isEmpty) return places;
 
-    // Group places by day number
     Map<int, List<ItineraryPlace>> groupedByDay = {};
     for (var place in places) {
       groupedByDay.putIfAbsent(place.dayNumber, () => []).add(place);
@@ -59,7 +121,6 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
     List<ItineraryPlace> finalOptimizedList = [];
 
-    // Optimize route order within each day individually
     groupedByDay.forEach((dayNum, dayPlaces) {
       if (dayPlaces.length <= 2) {
         finalOptimizedList.addAll(dayPlaces);
@@ -210,8 +271,12 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                               seen.add(name);
                               places.add(name);
 
-                              double? lat = place["lat"] != null ? (place["lat"] as num).toDouble() : null;
-                              double? lon = place["lon"] != null ? (place["lon"] as num).toDouble() : null;
+                              double? lat = place["lat"] != null
+                                  ? (place["lat"] as num).toDouble()
+                                  : null;
+                              double? lon = place["lon"] != null
+                                  ? (place["lon"] as num).toDouble()
+                                  : null;
 
                               if (lat == null || lon == null) {
                                 final searchQuery = "$name, ${widget.trip.location}";
@@ -229,7 +294,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                                     latitude: lat,
                                     longitude: lon,
                                     day: dayTitle,
-                                    dayNumber: dayNum, // Strictly binding the day number here
+                                    dayNumber: dayNum,
                                   ),
                                 );
                               }
@@ -239,8 +304,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                       }
                     }
 
-                    // Sort places geographically strictly inside each Day boundary
-                    List<ItineraryPlace> optimizedPlaces = _optimizePlacesByProximity(rawMapPlaces);
+                    List<ItineraryPlace> optimizedPlaces =
+                    _optimizePlacesByProximity(rawMapPlaces);
 
                     Map<String, dynamic>? route;
                     if (places.isNotEmpty) {
@@ -259,6 +324,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                       routingData = route;
                       itineraryMapPlaces = optimizedPlaces;
                     });
+
+                    // Save to local sqlite database
+                    await _saveCurrentItinerary();
                   } catch (e) {
                     debugPrint("ERROR DETAILS: $e");
 
@@ -309,7 +377,6 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             ),
             const SizedBox(height: 30),
 
-            // 🗺️ View Route On Map Action Button
             if (itineraryMapPlaces.isNotEmpty)
               Container(
                 width: double.infinity,
@@ -339,7 +406,6 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 ),
               ),
 
-            // Optimized Routes List
             if (routingData != null &&
                 routingData!["routes"] != null &&
                 (routingData!["routes"] as List).isNotEmpty)
@@ -378,7 +444,6 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 ],
               ),
 
-            // Generated Itinerary Display
             if (itineraryData != null &&
                 itineraryData!["itinerary"] != null &&
                 (itineraryData!["itinerary"] as List).isNotEmpty)

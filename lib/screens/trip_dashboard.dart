@@ -1,15 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
-import 'create_trip.dart';
-import 'packing_checklist.dart';
-import 'emergency.dart';
-import 'notes_screen.dart';
-import 'package:trip_dashboard/screens/documents_vault.dart';
+import '../services/geocoding_service.dart';
 import 'budget_screen.dart';
+import 'create_trip.dart';
+import 'documents_vault.dart';
+import 'emergency.dart';
 import 'itinerary_screen.dart';
 import 'map_screen.dart';
-import '../services/geocoding_service.dart';
+import 'notes_screen.dart';
+import 'packing_checklist.dart';
 
 class TripDashboard extends StatelessWidget {
   final Trip trip;
@@ -188,22 +189,57 @@ class TripDashboard extends StatelessWidget {
                 title: const Text("Offline Map"),
                 subtitle: const Text("View destination map"),
                 onTap: () async {
-                  final coordinates =
-                  await GeocodingService().getCoordinates(trip.location);
+                  if (trip.id == null) return;
 
-                  if (coordinates != null && context.mounted) {
+                  final dbService = DatabaseService();
+                  final savedJson = await dbService.getItinerary(trip.id!);
+
+                  List<ItineraryPlace> mapPlaces = [];
+
+                  if (savedJson != null) {
+                    try {
+                      final Map<String, dynamic> parsed = jsonDecode(savedJson);
+                      if (parsed["mapPlaces"] != null) {
+                        for (var p in parsed["mapPlaces"]) {
+                          mapPlaces.add(
+                            ItineraryPlace(
+                              name: p["name"] ?? "",
+                              latitude: (p["latitude"] as num).toDouble(),
+                              longitude: (p["longitude"] as num).toDouble(),
+                              day: p["day"] ?? "Day 1",
+                              dayNumber: p["dayNumber"] ?? 1,
+                            ),
+                          );
+                        }
+                      }
+                    } catch (e) {
+                      debugPrint("Error parsing offline map data: $e");
+                    }
+                  }
+
+                  // Fallback: If no itinerary was generated yet, fetch single location center
+                  if (mapPlaces.isEmpty) {
+                    final coordinates = await GeocodingService().getCoordinates(trip.location);
+                    if (coordinates != null) {
+                      mapPlaces.add(
+                        ItineraryPlace(
+                          name: trip.location,
+                          latitude: coordinates["lat"]!,
+                          longitude: coordinates["lon"]!,
+                          day: "Day 1",
+                          dayNumber: 1,
+                        ),
+                      );
+                    }
+                  }
+
+                  if (mapPlaces.isNotEmpty && context.mounted) {
                     Navigator.push(
                       context,
                       MaterialPageRoute(
                         builder: (_) => MapScreen(
-                          title: trip.location,
-                          places: [
-                            ItineraryPlace(
-                              name: trip.location,
-                              latitude: coordinates["lat"]!,
-                              longitude: coordinates["lon"]!,
-                            ),
-                          ],
+                          title: "${trip.location} Offline Map",
+                          places: mapPlaces,
                         ),
                       ),
                     );
@@ -211,7 +247,7 @@ class TripDashboard extends StatelessWidget {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text("Unable to load map."),
+                          content: Text("Unable to load destination map."),
                         ),
                       );
                     }

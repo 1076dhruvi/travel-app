@@ -18,34 +18,32 @@ class DatabaseService {
 
     return await openDatabase(
       dbPath,
-      version: 7,
+      version: 8,
       onCreate: (db, version) async {
-
-
         // ================= TRIPS =================
-      await db.execute('''
-  CREATE TABLE trips(
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    title TEXT,
-    location TEXT,
-    date TEXT,
-    budget REAL DEFAULT 0,
-    days INTEGER DEFAULT 1,
-    cover_image TEXT
-  )
-''');
+        await db.execute('''
+          CREATE TABLE trips(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            title TEXT,
+            location TEXT,
+            date TEXT,
+            budget REAL DEFAULT 0,
+            days INTEGER DEFAULT 1,
+            cover_image TEXT
+          )
+        ''');
 
         // ================= DOCUMENTS =================
         await db.execute('''
-        CREATE TABLE travel_documents(
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        trip_id INTEGER,
-        file_name TEXT,
-        file_type TEXT,
-        encrypted_file_path TEXT,
-        original_name TEXT,
-        uploaded_at TEXT
-        )
+          CREATE TABLE travel_documents(
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER,
+            file_name TEXT,
+            file_type TEXT,
+            encrypted_file_path TEXT,
+            original_name TEXT,
+            uploaded_at TEXT
+          )
         ''');
 
         // ================= PACKING ITEMS =================
@@ -57,9 +55,6 @@ class DatabaseService {
             done INTEGER
           )
         ''');
-
-        // ================= TRAVEL DOCUMENTS =================
-
 
         // ================= EXPENSES =================
         await db.execute('''
@@ -73,23 +68,30 @@ class DatabaseService {
           )
         ''');
 
-      await db.execute('''
-  CREATE TABLE notes (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    trip_id INTEGER NOT NULL,
-    title TEXT NOT NULL,
-    content TEXT NOT NULL,
-    timestamp TEXT NOT NULL,
-    color INTEGER NOT NULL,
-    is_pinned INTEGER NOT NULL DEFAULT 0,
-    reminder_time TEXT
-  )
-''');
-      },
+        // ================= NOTES =================
+        await db.execute('''
+          CREATE TABLE notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            timestamp TEXT NOT NULL,
+            color INTEGER NOT NULL,
+            is_pinned INTEGER NOT NULL DEFAULT 0,
+            reminder_time TEXT
+          )
+        ''');
 
+        // ================= ITINERARIES =================
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS itineraries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            trip_id INTEGER UNIQUE NOT NULL,
+            data TEXT NOT NULL
+          )
+        ''');
+      }, // <-- Properly closed onCreate
       onUpgrade: (db, oldVersion, newVersion) async {
-
-        // VERSION 2
         if (oldVersion < 2) {
           await db.execute('''
             CREATE TABLE packing_items(
@@ -101,7 +103,6 @@ class DatabaseService {
           ''');
         }
 
-        // VERSION 3
         if (oldVersion < 3) {
           await db.execute('''
             CREATE TABLE travel_documents(
@@ -116,20 +117,15 @@ class DatabaseService {
           ''');
         }
 
-        // VERSION 4
         if (oldVersion < 4) {
-
-          // Add budget column
           await db.execute(
             'ALTER TABLE trips ADD COLUMN budget REAL DEFAULT 0',
           );
 
-          // Add days column
           await db.execute(
             'ALTER TABLE trips ADD COLUMN days INTEGER DEFAULT 1',
           );
 
-          // Create expenses table
           await db.execute('''
             CREATE TABLE expenses(
               id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -140,31 +136,41 @@ class DatabaseService {
               date TEXT
             )
           ''');
-
-            if (oldVersion < 5) {
-              await db.execute('''
-        CREATE TABLE notes (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        trip_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        content TEXT NOT NULL,
-        timestamp TEXT NOT NULL,
-        color INTEGER NOT NULL,
-        is_pinned INTEGER NOT NULL DEFAULT 0
-      )
-    ''');
-          }
         }
 
-        if(oldVersion < 5){
- await db.execute(
-   "ALTER TABLE trips ADD COLUMN cover_image TEXT"
- );
-}
+        if (oldVersion < 5) {
+          await db.execute('''
+            CREATE TABLE notes (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trip_id INTEGER NOT NULL,
+              title TEXT NOT NULL,
+              content TEXT NOT NULL,
+              timestamp TEXT NOT NULL,
+              color INTEGER NOT NULL,
+              is_pinned INTEGER NOT NULL DEFAULT 0
+            )
+          ''');
+
+          await db.execute(
+            "ALTER TABLE trips ADD COLUMN cover_image TEXT",
+          );
+        }
+
         if (oldVersion < 7) {
           await db.execute(
             'ALTER TABLE notes ADD COLUMN reminder_time TEXT',
           );
+        }
+
+        // VERSION 8: Add persistence support for itineraries safely
+        if (oldVersion < 8) {
+          await db.execute('''
+            CREATE TABLE IF NOT EXISTS itineraries (
+              id INTEGER PRIMARY KEY AUTOINCREMENT,
+              trip_id INTEGER UNIQUE NOT NULL,
+              data TEXT NOT NULL
+            )
+          ''');
         }
       },
     );
@@ -258,10 +264,65 @@ class DatabaseService {
       whereArgs: [id],
     );
 
+    await db.delete(
+      'notes',
+      where: 'trip_id = ?',
+      whereArgs: [id],
+    );
+
+    await db.delete(
+      'itineraries',
+      where: 'trip_id = ?',
+      whereArgs: [id],
+    );
+
     return await db.delete(
       'trips',
       where: 'id = ?',
       whereArgs: [id],
+    );
+  }
+
+  // =========================================================
+  // ITINERARY PERSISTENCE
+  // =========================================================
+
+  Future<void> saveItinerary(int tripId, String jsonData) async {
+    final db = await database;
+
+    await db.insert(
+      'itineraries',
+      {
+        'trip_id': tripId,
+        'data': jsonData,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String?> getItinerary(int tripId) async {
+    final db = await database;
+
+    final result = await db.query(
+      'itineraries',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
+    );
+
+    if (result.isNotEmpty) {
+      return result.first['data'] as String?;
+    }
+
+    return null;
+  }
+
+  Future<int> deleteItinerary(int tripId) async {
+    final db = await database;
+
+    return await db.delete(
+      'itineraries',
+      where: 'trip_id = ?',
+      whereArgs: [tripId],
     );
   }
 
@@ -376,6 +437,11 @@ class DatabaseService {
       whereArgs: [id],
     );
   }
+
+  // =========================================================
+  // NOTES
+  // =========================================================
+
   Future<int> insertNote(Note note) async {
     final db = await database;
 
@@ -480,5 +546,4 @@ class DatabaseService {
       whereArgs: [id],
     );
   }
-
 }

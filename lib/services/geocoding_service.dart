@@ -5,8 +5,8 @@ class GeocodingService {
   static const String apiKey = "70101d58fc2d4441a91d29558f9157bb";
 
   Future<List<Map<String, dynamic>>> searchPlaces(
-    String query,
-  ) async {
+      String query,
+      ) async {
     if (query.trim().isEmpty) {
       return [];
     }
@@ -15,9 +15,9 @@ class GeocodingService {
 
     final url = Uri.parse(
       "https://api.geoapify.com/v1/geocode/autocomplete"
-      "?text=$encodedQuery"
-      "&limit=10"
-      "&apiKey=$apiKey",
+          "?text=$encodedQuery"
+          "&limit=10"
+          "&apiKey=$apiKey",
     );
 
     try {
@@ -30,7 +30,6 @@ class GeocodingService {
       }
 
       final data = jsonDecode(response.body);
-
       final features = data["features"] as List? ?? [];
 
       final List<Map<String, dynamic>> results = [];
@@ -69,55 +68,44 @@ class GeocodingService {
     final state = properties["state"]?.toString().trim() ?? "";
     final country = properties["country"]?.toString().trim() ?? "";
 
-    if (city.isNotEmpty) {
-      final parts = <String>[];
+    final parts = <String>[];
 
-      parts.add(city);
-
-      if (state.isNotEmpty &&
-          state.toLowerCase() != city.toLowerCase()) {
-        parts.add(state);
-      }
-
-      if (country.isNotEmpty) {
-        parts.add(country);
-      }
-
-      return parts.join(", ");
-    }
-
+    // Priority 1: Include specific location/attraction name
     if (name.isNotEmpty) {
-      final parts = <String>[];
-
       parts.add(name);
-
-      if (state.isNotEmpty &&
-          state.toLowerCase() != name.toLowerCase()) {
-        parts.add(state);
-      }
-
-      if (country.isNotEmpty) {
-        parts.add(country);
-      }
-
-      return parts.join(", ");
     }
 
-    return "";
+    // Priority 2: Add city if it's different from the place name
+    if (city.isNotEmpty && city.toLowerCase() != name.toLowerCase()) {
+      parts.add(city);
+    }
+
+    // Priority 3: Add state
+    if (state.isNotEmpty &&
+        state.toLowerCase() != name.toLowerCase() &&
+        state.toLowerCase() != city.toLowerCase()) {
+      parts.add(state);
+    }
+
+    // Priority 4: Add country
+    if (country.isNotEmpty) {
+      parts.add(country);
+    }
+
+    return parts.join(", ");
   }
 
-  // Keep this because other parts of your app already use it.
+  // Used across the app for fallback coordinates lookup
   Future<Map<String, double>?> getCoordinates(
-    String location,
-  ) async {
-    final encodedLocation =
-        Uri.encodeQueryComponent(location);
+      String location,
+      ) async {
+    final encodedLocation = Uri.encodeQueryComponent(location);
 
     final url = Uri.parse(
       "https://api.geoapify.com/v1/geocode/search"
-      "?text=$encodedLocation"
-      "&limit=1"
-      "&apiKey=$apiKey",
+          "?text=$encodedLocation"
+          "&limit=1"
+          "&apiKey=$apiKey",
     );
 
     try {
@@ -125,21 +113,14 @@ class GeocodingService {
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
-
-        final features =
-            data["features"] as List? ?? [];
+        final features = data["features"] as List? ?? [];
 
         if (features.isNotEmpty) {
-          final properties =
-              features[0]["properties"];
+          final properties = features[0]["properties"];
 
           return {
-            "lat": double.parse(
-              properties["lat"].toString(),
-            ),
-            "lon": double.parse(
-              properties["lon"].toString(),
-            ),
+            "lat": double.parse(properties["lat"].toString()),
+            "lon": double.parse(properties["lon"].toString()),
           };
         }
       }

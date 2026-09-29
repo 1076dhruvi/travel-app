@@ -1,7 +1,13 @@
+import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:maplibre/maplibre.dart';
 import 'package:geolocator/geolocator.dart' as geo;
+
+// ─────────────────────────────────────────────────────────────
+// MODEL
+// ─────────────────────────────────────────────────────────────
 
 class ItineraryPlace {
   final String name;
@@ -19,6 +25,10 @@ class ItineraryPlace {
   });
 }
 
+// ─────────────────────────────────────────────────────────────
+// WIDGET
+// ─────────────────────────────────────────────────────────────
+
 class MapScreen extends StatefulWidget {
   final String title;
   final List<ItineraryPlace> places;
@@ -34,11 +44,17 @@ class MapScreen extends StatefulWidget {
 }
 
 class _MapScreenState extends State<MapScreen> {
-  MapController? mapController;
+  MapController? _mapController;
+  StyleController? _styleController;
+
   double? currentLat;
   double? currentLon;
   bool loadingLocation = true;
   bool isMapReady = false;
+
+  final Set<String> _injectedRouteIds = {};
+
+  // ── Day colour palette ────────────────────────────────────
 
   final List<Color> dayColors = [
     Colors.deepPurple,
@@ -50,39 +66,59 @@ class _MapScreenState extends State<MapScreen> {
   ];
 
   Color _getDayColor(int dayNum) {
-    if (dayNum < 1) dayNum = 1;
-    return dayColors[(dayNum - 1) % dayColors.length];
+    var effectiveDay = dayNum;
+    if (effectiveDay < 1) {
+      effectiveDay = 1;
+    }
+    return dayColors[(effectiveDay - 1) % dayColors.length];
   }
+
+  /// Returns a CSS hex string like `"#7C3AED"` for use in MapLibre style specs.
+  String _colorToHex(Color color) {
+    final r = (color.r * 255.0).round().clamp(0, 255);
+    final g = (color.g * 255.0).round().clamp(0, 255);
+    final b = (color.b * 255.0).round().clamp(0, 255);
+    return '#${r.toRadixString(16).padLeft(2, '0')}'
+        '${g.toRadixString(16).padLeft(2, '0')}'
+        '${b.toRadixString(16).padLeft(2, '0')}';
+  }
+
+  // ── Lifecycle ─────────────────────────────────────────────
 
   @override
   void initState() {
     super.initState();
-    getCurrentLocation();
+    _getCurrentLocation();
   }
 
-  Future<void> getCurrentLocation() async {
+  // ── Location ──────────────────────────────────────────────
+
+  Future<void> _getCurrentLocation() async {
     bool serviceEnabled = await geo.Geolocator.isLocationServiceEnabled();
     if (!serviceEnabled) {
-      if (mounted) setState(() => loadingLocation = false);
+      if (mounted) {
+        setState(() => loadingLocation = false);
+      }
       return;
     }
 
-    geo.LocationPermission permission = await geo.Geolocator.checkPermission();
+    geo.LocationPermission permission =
+    await geo.Geolocator.checkPermission();
     if (permission == geo.LocationPermission.denied) {
       permission = await geo.Geolocator.requestPermission();
     }
-
     if (permission == geo.LocationPermission.denied ||
         permission == geo.LocationPermission.deniedForever) {
-      if (mounted) setState(() => loadingLocation = false);
+      if (mounted) {
+        setState(() => loadingLocation = false);
+      }
       return;
     }
 
     try {
-      geo.Position position = await geo.Geolocator.getCurrentPosition(
+      final position = await geo.Geolocator.getCurrentPosition(
         desiredAccuracy: geo.LocationAccuracy.high,
       );
-
       if (mounted) {
         setState(() {
           currentLat = position.latitude;
@@ -91,20 +127,28 @@ class _MapScreenState extends State<MapScreen> {
         });
       }
     } catch (e) {
-      debugPrint("Location Error: $e");
-      if (mounted) setState(() => loadingLocation = false);
+      debugPrint('Location error: $e');
+      if (mounted) {
+        setState(() => loadingLocation = false);
+      }
     }
   }
 
-  double _calculateDistanceInKm(double lat1, double lon1, double lat2, double lon2) {
+  // ── Camera helpers ────────────────────────────────────────
+
+  double _haversineKm(
+      double lat1, double lon1, double lat2, double lon2) {
     const p = 0.017453292519943295;
     final a = 0.5 -
         math.cos((lat2 - lat1) * p) / 2 +
-        math.cos(lat1 * p) * math.cos(lat2 * p) * (1 - math.cos((lon2 - lon1) * p)) / 2;
+        math.cos(lat1 * p) *
+            math.cos(lat2 * p) *
+            (1 - math.cos((lon2 - lon1) * p)) /
+            2;
     return 12742 * math.asin(math.sqrt(a));
   }
 
-  double _getDynamicZoom(double distanceKm) {
+  double _dynamicZoom(double distanceKm) {
     if (distanceKm > 1000) return 4.5;
     if (distanceKm > 500) return 5.5;
     if (distanceKm > 200) return 6.5;
@@ -116,43 +160,160 @@ class _MapScreenState extends State<MapScreen> {
     return 13.0;
   }
 
-  void fitAllPoints() async {
-    if (mapController == null || !isMapReady || widget.places.isEmpty) return;
+  Future<void> fitAllPoints() async {
+    if (_mapController == null ||
+        !isMapReady ||
+        widget.places.isEmpty) {
+      return;
+    }
 
-    // Use only itinerary place coordinates so distant user location doesn't break zoom
-    List<double> lats = widget.places.map((p) => p.latitude).toList();
-    List<double> lons = widget.places.map((p) => p.longitude).toList();
+    final lats = widget.places.map((p) => p.latitude).toList();
+    final lons = widget.places.map((p) => p.longitude).toList();
 
-    double minLat = lats.reduce(math.min);
-    double maxLat = lats.reduce(math.max);
-    double minLon = lons.reduce(math.min);
-    double maxLon = lons.reduce(math.max);
+    final minLat = lats.reduce(math.min);
+    final maxLat = lats.reduce(math.max);
+    final minLon = lons.reduce(math.min);
+    final maxLon = lons.reduce(math.max);
 
     final centerLat = (minLat + maxLat) / 2;
     final centerLon = (minLon + maxLon) / 2;
-    final maxDistKm = _calculateDistanceInKm(minLat, minLon, maxLat, maxLon);
+    final distKm = _haversineKm(minLat, minLon, maxLat, maxLon);
 
-    await mapController!.animateCamera(
+    await _mapController!.animateCamera(
       center: Geographic(lat: centerLat, lon: centerLon),
-      zoom: _getDynamicZoom(maxDistKm),
+      zoom: _dynamicZoom(distKm),
     );
   }
 
   Future<void> goToLocation(double lat, double lon) async {
-    if (mapController == null) return;
-    await mapController!.animateCamera(
+    if (_mapController == null) return;
+    await _mapController!.animateCamera(
       center: Geographic(lat: lat, lon: lon),
       zoom: 15,
     );
   }
 
-  Map<int, List<ItineraryPlace>> _groupPlacesByDay() {
-    Map<int, List<ItineraryPlace>> grouped = {};
-    for (var place in widget.places) {
+  // ── OSRM route fetching & injection ──────────────────────
+
+  Map<int, List<ItineraryPlace>> _groupByDay() {
+    final Map<int, List<ItineraryPlace>> grouped = {};
+    for (final place in widget.places) {
       grouped.putIfAbsent(place.dayNumber, () => []).add(place);
     }
     return grouped;
   }
+
+  Future<List<List<double>>?> _fetchOsrmRoute(
+      double lat1,
+      double lon1,
+      double lat2,
+      double lon2,
+      ) async {
+    final url = Uri.parse(
+      'https://router.project-osrm.org/route/v1/driving/'
+          '$lon1,$lat1;$lon2,$lat2'
+          '?overview=full&geometries=geojson',
+    );
+
+    try {
+      final response =
+      await http.get(url).timeout(const Duration(seconds: 10));
+
+      if (response.statusCode != 200) return null;
+
+      final body = jsonDecode(response.body) as Map<String, dynamic>;
+      final routes = body['routes'] as List<dynamic>?;
+      if (routes == null || routes.isEmpty) return null;
+
+      final coords = routes[0]['geometry']['coordinates'] as List<dynamic>;
+      return coords
+          .map((c) => [
+        (c[0] as num).toDouble(), // lon
+        (c[1] as num).toDouble(), // lat
+      ])
+          .toList();
+    } catch (e) {
+      debugPrint('OSRM fetch error ($lat1,$lon1 → $lat2,$lon2): $e');
+      return null;
+    }
+  }
+
+  Future<void> _injectAllRoutes(StyleController style) async {
+    _styleController = style;
+    _injectedRouteIds.clear();
+    final grouped = _groupByDay();
+
+    for (final entry in grouped.entries) {
+      final dayNum = entry.key;
+      final dayPlaces = entry.value;
+
+      if (dayPlaces.length < 2) continue;
+
+      final color = _getDayColor(dayNum);
+      final hexColor = _colorToHex(color);
+
+      final List<List<double>> allCoords = [];
+
+      for (int i = 0; i < dayPlaces.length - 1; i++) {
+        final from = dayPlaces[i];
+        final to = dayPlaces[i + 1];
+
+        final coords = await _fetchOsrmRoute(
+          from.latitude,
+          from.longitude,
+          to.latitude,
+          to.longitude,
+        );
+
+        if (coords != null && coords.isNotEmpty) {
+          if (allCoords.isNotEmpty) coords.removeAt(0);
+          allCoords.addAll(coords);
+        } else {
+          if (allCoords.isEmpty) {
+            allCoords.add([from.longitude, from.latitude]);
+          }
+          allCoords.add([to.longitude, to.latitude]);
+        }
+      }
+
+      if (allCoords.length < 2) continue;
+
+      final sourceId = 'route-source-day$dayNum';
+      final layerId = 'route-layer-day$dayNum';
+
+      final geoJsonString = jsonEncode({
+        'type': 'Feature',
+        'geometry': {
+          'type': 'LineString',
+          'coordinates': allCoords,
+        },
+        'properties': {},
+      });
+
+      try {
+        await style.addSource(GeoJsonSource(
+          id: sourceId,
+          data: geoJsonString,
+        ));
+
+        await style.addLayer(LineStyleLayer(
+          id: layerId,
+          sourceId: sourceId,
+          paint: {
+            'line-color': hexColor,
+            'line-width': 5.0,
+            'line-opacity': 0.85,
+          },
+        ));
+
+        _injectedRouteIds.add(layerId);
+      } catch (e) {
+        debugPrint('Layer injection error for day $dayNum: $e');
+      }
+    }
+  }
+
+  // ── Build ─────────────────────────────────────────────────
 
   @override
   Widget build(BuildContext context) {
@@ -173,21 +334,22 @@ class _MapScreenState extends State<MapScreen> {
               )
                   : Geographic(lat: 28.6139, lon: 77.2090),
               initZoom: 11,
-              initStyle: "https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json",
+              initStyle:
+              'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',
             ),
             onMapCreated: (controller) {
-              mapController = controller;
+              _mapController = controller;
             },
-            onStyleLoaded: (style) {
-              if (mounted) {
-                setState(() => isMapReady = true);
-                fitAllPoints();
-              }
+            onStyleLoaded: (style) async {
+              _styleController = style;
+              if (mounted) setState(() => isMapReady = true);
+
+              await fitAllPoints();
+              await _injectAllRoutes(style);
             },
             children: [
               WidgetLayer(
                 markers: [
-                  // Location stop markers
                   ...widget.places.asMap().entries.map((entry) {
                     final index = entry.key;
                     final place = entry.value;
@@ -200,7 +362,8 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                       size: const Size(48, 64),
                       child: GestureDetector(
-                        onTap: () => goToLocation(place.latitude, place.longitude),
+                        onTap: () =>
+                            goToLocation(place.latitude, place.longitude),
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
@@ -212,7 +375,7 @@ class _MapScreenState extends State<MapScreen> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                               child: Text(
-                                "${index + 1}",
+                                '${index + 1}',
                                 style: const TextStyle(
                                   color: Colors.white,
                                   fontSize: 10,
@@ -221,8 +384,11 @@ class _MapScreenState extends State<MapScreen> {
                               ),
                             ),
                             Icon(
-                              index == 0 ? Icons.stars_rounded : Icons.location_on,
-                              color: index == 0 ? Colors.amber : color,
+                              index == 0
+                                  ? Icons.stars_rounded
+                                  : Icons.location_on,
+                              color:
+                              index == 0 ? Colors.amber : color,
                               size: 32,
                             ),
                           ],
@@ -230,19 +396,20 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     );
                   }),
-
-                  // User current position marker (only shown if detected)
                   if (currentLat != null && currentLon != null)
                     Marker(
-                      point: Geographic(lat: currentLat!, lon: currentLon!),
+                      point: Geographic(
+                          lat: currentLat!, lon: currentLon!),
                       size: const Size(30, 30),
                       child: Container(
                         decoration: BoxDecoration(
                           color: Colors.blueAccent,
                           shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
+                          border: Border.all(
+                              color: Colors.white, width: 3),
                           boxShadow: const [
-                            BoxShadow(color: Colors.black38, blurRadius: 6)
+                            BoxShadow(
+                                color: Colors.black38, blurRadius: 6)
                           ],
                         ),
                       ),
@@ -251,8 +418,8 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ],
           ),
-          if (loadingLocation) const Center(child: CircularProgressIndicator()),
-
+          if (loadingLocation)
+            const Center(child: CircularProgressIndicator()),
           Positioned(
             left: 0,
             right: 0,
@@ -267,40 +434,47 @@ class _MapScreenState extends State<MapScreen> {
                 final color = _getDayColor(place.dayNumber);
 
                 return GestureDetector(
-                  onTap: () => goToLocation(place.latitude, place.longitude),
+                  onTap: () =>
+                      goToLocation(place.latitude, place.longitude),
                   child: Card(
                     margin: const EdgeInsets.only(right: 12),
                     elevation: 6,
                     shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12)),
                     child: Padding(
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 14, vertical: 10),
                       child: Row(
+                        mainAxisSize: MainAxisSize.min,
                         children: [
                           CircleAvatar(
                             backgroundColor: color,
                             radius: 16,
                             child: Text(
-                              "${index + 1}",
+                              '${index + 1}',
                               style: const TextStyle(
                                   color: Colors.white, fontSize: 12),
                             ),
                           ),
                           const SizedBox(width: 10),
                           Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                            mainAxisAlignment:
+                            MainAxisAlignment.center,
                             children: [
                               Text(
                                 place.name,
                                 style: const TextStyle(
-                                    fontWeight: FontWeight.bold, fontSize: 14),
+                                    fontWeight: FontWeight.bold,
+                                    fontSize: 14),
                               ),
                               if (place.day != null)
                                 Text(
                                   place.day!,
                                   style: TextStyle(
-                                      color: Colors.grey.shade600, fontSize: 12),
+                                      color: Colors.grey.shade600,
+                                      fontSize: 12),
                                 ),
                             ],
                           ),
@@ -317,7 +491,7 @@ class _MapScreenState extends State<MapScreen> {
       floatingActionButton: Padding(
         padding: const EdgeInsets.only(bottom: 100),
         child: FloatingActionButton(
-          heroTag: "fit_all",
+          heroTag: 'fit_all',
           backgroundColor: Colors.grey.shade900,
           onPressed: fitAllPoints,
           child: const Icon(Icons.aspect_ratio, color: Colors.white),
