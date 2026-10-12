@@ -157,9 +157,14 @@ class DatabaseService {
         }
 
         if (oldVersion < 7) {
-          await db.execute(
-            'ALTER TABLE notes ADD COLUMN reminder_time TEXT',
-          );
+          final columns = await db.rawQuery('PRAGMA table_info(notes)');
+          final exists = columns.any((column) => column['name'] == 'reminder_time');
+
+          if (!exists) {
+            await db.execute(
+              'ALTER TABLE notes ADD COLUMN reminder_time TEXT',
+            );
+          }
         }
 
         // VERSION 8: Add persistence support for itineraries safely

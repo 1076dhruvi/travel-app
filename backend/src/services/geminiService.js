@@ -1,99 +1,86 @@
-import { GoogleGenAI } from "@google/genai";
-import { z } from "zod";
-import { zodToJsonSchema } from "zod-to-json-schema";
+import { GoogleGenerativeAI } from "@google/generative-ai";
 
-const ai = new GoogleGenAI({
-    apiKey: process.env.GEMINI_API_KEY
-});
-
-const itinerarySchema = z.array(
-    z.object({
-        day: z.number(),
-        attractions: z.array(
-            z.object({
-                name: z.string(),
-                bestTime: z.string()
-            })
-        )
-    })
-);
-
-export const generateItinerary = async (
-    destination,
-    days,
-    interests
-) => {
-
-    const response = await ai.models.generateContent({
-
-        model: "gemini-3.1-flash-lite",
-
-contents: `
-
-You are an expert travel planner.
-
-Create a ${days}-day travel itinerary for ${destination}, India.
-
-Traveller interests:
-${interests.join(", ")}
-
-Rules:
-
-- Return ONLY valid JSON.
-- Include ONLY real tourist attractions or landmarks located in ${destination}.
-- Every attraction MUST be searchable on Google Maps.
-- Use the official Google Maps name of each attraction.
-- Include the city name in every attraction name.
-
-Examples:
-- "Gateway of India, Mumbai"
-- "India Gate, New Delhi"
-- "Tipu Sultan's Summer Palace, Bengaluru"
-- "Baga Beach, Goa"
-
-- Do NOT include activities such as:
-  - Street Food Tour
-  - Shopping Experience
-  - Sunset Cruise
-  - Local Market Walk
-  - Café Hopping
-
-- Do NOT invent place names.
-- Group nearby attractions together.
-- Maximum 4 attractions per day.
-- Include the best time to visit each attraction.
-
-Format:
-
-[
-  {
-    "day": 1,
-    "attractions": [
-      {
-        "name": "Gateway of India, Mumbai",
-        "bestTime": "Morning"
-      }
-    ]
+/**
+ * Invokes Gemini ONLY for geographic clustering and attraction selection.
+ * Returns strict JSON with day groups and one-line reasons.
+ * Real times, distances, routes, and opening hours come from external APIs, NOT Gemini.
+ */
+export async function generateItineraryPlan(destination, days = 2, interests = []) {
+  const apiKey = process.env["GEMINI_API_KEY"];
+  if (!apiKey) {
+    throw new Error("GEMINI_API_KEY is not configured in backend environment.");
   }
-]
 
-`,
-        config: {
-            temperature: 0.2,
-            maxOutputTokens: 1500,
-            responseMimeType: "application/json",
-            responseSchema:
-                zodToJsonSchema(itinerarySchema).schema
-        }
+  const genAI = new GoogleGenerativeAI(apiKey);
 
+  // Use fast, modern Gemini flash model
+  let model;
+  try {
+    model = genAI.getGenerativeModel({
+      model: "gemini-2.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.2,
+        maxOutputTokens: 3000,
+      },
     });
+  } catch (mErr) {
+    model = genAI.getGenerativeModel({
+      model: "gemini-1.5-flash",
+      generationConfig: {
+        responseMimeType: "application/json",
+        temperature: 0.2,
+      },
+    });
+  }
 
-    const parsed = JSON.parse(response.text);
+  const prompt = `You are an expert geographical travel planner.
+Create a ${days}-day travel itinerary for ${destination}.
 
-    console.log("Gemini Response:");
-    console.log(JSON.stringify(parsed, null, 2));
+Traveller interests: ${interests.length > 0 ? interests.join(", ") : "general sightseeing"}.
 
-    const validated = itinerarySchema.parse(parsed);
+CLUSTERING RULES (MANDATORY):
+1. Cluster places strictly by proximity so each day covers ONE distinct geographic area or neighbourhood of ${destination}.
+2. NO area or neighbourhood may repeat on another day.
+3. Include 3 to 4 real, verifiable tourist attractions per day.
+4. Use ONLY real attractions searchable on Google Maps by their official name.
+5. Do NOT include generic activities like "Food Tour", "Shopping Walk", "Sunset Cruise".
+6. Do NOT fabricate arrival/leave times, travel distances, durations, or opening hours. External APIs will fetch them.
 
-    return validated;
-};
+FOR EACH ATTRACTION, provide ONLY:
+- "name": Official Google Maps name with city (e.g. "Mattancherry Palace, Kochi")
+- "description": A single concise one-line reason to visit (e.g. "Historic 16th-century palace featuring elaborate Hindu temple murals and royal portraits.")
+- "bestTime": Best time of day ("Morning", "Afternoon", "Evening", or "Sunset")
+- "lat": Approximate latitude as a number
+- "lon": Approximate longitude as a number
+
+Return STRICT JSON matching this schema:
+{
+  "itinerary": [
+    {
+      "day": 1,
+      "theme": "Theme of the day",
+      "area": "Specific neighbourhood or district name",
+      "attractions": [
+        {
+          "name": "Attraction Name, City",
+          "description": "One-line factual reason to visit.",
+          "bestTime": "Morning",
+          "lat": 9.9654,
+          "lon": 76.2421
+        }
+      ]
+    }
+  ]
+}`;
+
+  const result = await model.generateContent(prompt);
+  const responseText = result.response.text();
+  const parsed = JSON.parse(responseText);
+
+  if (!parsed || !Array.isArray(parsed.itinerary)) {
+    throw new Error("Invalid itinerary JSON returned from Gemini.");
+  }
+
+  return parsed.itinerary;
+}
