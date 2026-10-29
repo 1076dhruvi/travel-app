@@ -918,17 +918,17 @@ class _MapScreenState extends State<MapScreen> {
           // ── MapLibre Map ──────────────────────────────────
           MapLibreMap(
             options: MapOptions(
-              initCenter: widget.places.isNotEmpty
+              initCenter: widget.startPoint != null
                   ? Geographic(
-                      lat: widget.places.first.latitude,
-                      lon: widget.places.first.longitude,
+                      lat: widget.startPoint!.latitude,
+                      lon: widget.startPoint!.longitude,
                     )
-                  : (widget.startPoint != null
+                  : (widget.places.isNotEmpty
                       ? Geographic(
-                          lat: widget.startPoint!.latitude,
-                          lon: widget.startPoint!.longitude,
+                          lat: widget.places.first.latitude,
+                          lon: widget.places.first.longitude,
                         )
-                      : Geographic(lat: 28.6139, lon: 77.2090)),
+                      : Geographic(lat: 19.076, lon: 72.8777)),
               initZoom: 11,
               initStyle:
                   'https://basemaps.cartocdn.com/gl/voyager-gl-style/style.json',

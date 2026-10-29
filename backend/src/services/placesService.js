@@ -97,7 +97,7 @@ export async function getPlaceDetails(placeName, city = "") {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": googleApiKey,
             "X-Goog-FieldMask":
-              "places.displayName,places.formattedAddress,places.location,places.regularOpeningHours,places.currentOpeningHours",
+              "places.id,places.displayName,places.formattedAddress,places.location,places.regularOpeningHours,places.currentOpeningHours",
           },
           timeout: 6000,
         }
@@ -111,6 +111,7 @@ export async function getPlaceDetails(placeName, city = "") {
           "check locally";
 
         const result = {
+          placeId: place.id || `${place.location.latitude},${place.location.longitude}`,
           name: place.displayName?.text || placeName,
           lat: place.location.latitude,
           lon: place.location.longitude,
@@ -146,6 +147,7 @@ export async function getPlaceDetails(placeName, city = "") {
         }
 
         const result = {
+          placeId: candidate.place_id || `${candidate.geometry.location.lat},${candidate.geometry.location.lng}`,
           name: candidate.name || placeName,
           lat: candidate.geometry.location.lat,
           lon: candidate.geometry.location.lng,
@@ -166,6 +168,7 @@ export async function getPlaceDetails(placeName, city = "") {
     const geo = await geocodePlace(placeName, city);
     if (geo) {
       const result = {
+        placeId: geo.placeId || `${geo.lat},${geo.lng ?? geo.lon}`,
         name: geo.name || placeName,
         lat: geo.lat,
         lon: geo.lng ?? geo.lon,
