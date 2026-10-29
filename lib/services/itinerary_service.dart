@@ -1,19 +1,10 @@
 import 'dart:convert';
-import 'dart:io' show Platform;
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
+import '../config/app_config.dart';
 
 class ItineraryService {
   // In-memory cache for itinerary responses
   static final Map<String, dynamic> _responseCache = {};
-
-  String get _baseUrl {
-    if (kIsWeb) return "http://localhost:3000";
-    try {
-      if (Platform.isAndroid) return "http://10.0.2.2:3000";
-    } catch (_) {}
-    return "http://localhost:3000";
-  }
 
   Future<dynamic> generateItinerary({
     required String destination,
@@ -21,12 +12,13 @@ class ItineraryService {
     required List<String> interests,
     Map<String, dynamic>? startPoint,
   }) async {
-    final cacheKey = "${destination.toLowerCase()}_${days}_${interests.join(',')}_${startPoint?['lat']},${startPoint?['lon']}";
+    final cacheKey =
+        "${destination.toLowerCase()}_${days}_${interests.join(',')}_${startPoint?['lat']},${startPoint?['lon']}";
     if (_responseCache.containsKey(cacheKey)) {
       return _responseCache[cacheKey];
     }
 
-    final url = Uri.parse("$_baseUrl/api/itinerary/generate");
+    final url = Uri.parse(AppConfig.itineraryGenerateUrl);
 
     final Map<String, dynamic> payload = {
       "destination": destination,
@@ -40,9 +32,7 @@ class ItineraryService {
 
     final response = await http.post(
       url,
-      headers: {
-        "Content-Type": "application/json",
-      },
+      headers: {"Content-Type": "application/json"},
       body: jsonEncode(payload),
     );
 

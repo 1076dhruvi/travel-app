@@ -3,6 +3,7 @@ import '../models/trip.dart';
 import '../services/database_service.dart';
 import 'trip_dashboard.dart';
 import 'create_trip.dart';
+import '../theme/app_theme.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -63,19 +64,17 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
   @override
   Widget build(BuildContext context) {
-    
     return Scaffold(
-      backgroundColor: const Color(0xFFF6F7FB),
+      backgroundColor: AppTheme.background,
 
       floatingActionButton: FloatingActionButton(
-        backgroundColor: const Color(0xFF7C4DFF),
+        backgroundColor: AppTheme.primaryViolet,
         child: const Icon(Icons.add, color: Colors.white),
         onPressed: openCreateTrip,
       ),
 
       body: Column(
         children: [
-
           // 🌸 HEADER (SEARCH BAR REMOVED)
           Container(
             width: double.infinity,
@@ -87,7 +86,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             decoration: const BoxDecoration(
               gradient: LinearGradient(
-                colors: [Color(0xFF7C4DFF), Color(0xFFB388FF)],
+                colors: [AppTheme.primaryViolet, AppTheme.primaryVioletDark],
                 begin: Alignment.topLeft,
                 end: Alignment.bottomRight,
               ),
@@ -99,7 +98,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: const Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 Text(
                   "Hello, Traveler 👋",
                   style: TextStyle(
@@ -113,10 +111,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
                 Text(
                   "Where do you want to go next?",
-                  style: TextStyle(
-                    color: Colors.white70,
-                    fontSize: 14,
-                  ),
+                  style: TextStyle(color: Colors.white70, fontSize: 14),
                 ),
               ],
             ),
@@ -132,15 +127,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
               children: const [
                 Text(
                   "My Trips",
-                  style: TextStyle(
-                    fontSize: 20,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 Text(
                   "View All",
                   style: TextStyle(
-                    color: Color(0xFF7C4DFF),
+                    color: AppTheme.primaryViolet,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -155,85 +147,84 @@ class _DashboardScreenState extends State<DashboardScreen> {
             child: isLoading
                 ? const Center(child: CircularProgressIndicator())
                 : trips.isEmpty
-                    ? const Center(
-                        child: Text(
-                          "No Trips Yet ✈️",
-                          style: TextStyle(color: Colors.black54),
-                        ),
-                      )
-                    : RefreshIndicator(
-                        onRefresh: loadTrips,
-                        child: ListView.builder(
-                          padding: const EdgeInsets.all(16),
-                          itemCount: trips.length,
-                          itemBuilder: (context, index) {
-                            final trip = trips[index];
+                ? const Center(
+                    child: Text(
+                      "No Trips Yet ✈️",
+                      style: TextStyle(color: Colors.black54),
+                    ),
+                  )
+                : RefreshIndicator(
+                    onRefresh: loadTrips,
+                    child: ListView.builder(
+                      padding: const EdgeInsets.all(16),
+                      itemCount: trips.length,
+                      itemBuilder: (context, index) {
+                        final trip = trips[index];
 
-                            return GestureDetector(
-                              onTap: () => openTrip(trip),
-                              child: Container(
-                                margin: const EdgeInsets.only(bottom: 16),
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  color: Colors.white,
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: Colors.black.withOpacity(0.05),
-                                      blurRadius: 10,
-                                      offset: const Offset(0, 5),
-                                    ),
-                                  ],
+                        return GestureDetector(
+                          onTap: () => openTrip(trip),
+                          child: Container(
+                            margin: const EdgeInsets.only(bottom: 16),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              color: Colors.white,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.05),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 5),
                                 ),
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-
-                                    ClipRRect(
-                                      borderRadius: const BorderRadius.only(
-                                        topLeft: Radius.circular(20),
-                                        topRight: Radius.circular(20),
-                                      ),
-                                      child: Image.network(
-                                        trip.coverImage ?? "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
-                                        height: 140,
-                                        width: double.infinity,
-                                        fit: BoxFit.cover,
-                                      )
-                                    ),
-
-                                    Padding(
-                                      padding: const EdgeInsets.all(12),
-                                      child: Column(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.start,
-                                        children: [
-
-                                          Text(
-                                            trip.title,
-                                            style: const TextStyle(
-                                              fontSize: 18,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-
-                                          const SizedBox(height: 5),
-
-                                          Text(
-                                            "${trip.location} • ${trip.date}",
-                                            style: const TextStyle(
-                                              color: Colors.black54,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                  ],
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                ClipRRect(
+                                  borderRadius: const BorderRadius.only(
+                                    topLeft: Radius.circular(20),
+                                    topRight: Radius.circular(20),
+                                  ),
+                                  child: Image.network(
+                                    trip.coverImage ??
+                                        "https://images.unsplash.com/photo-1501785888041-af3ef285b470",
+                                    height: 140,
+                                    width: double.infinity,
+                                    fit: BoxFit.cover,
+                                  ),
                                 ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
+
+                                Padding(
+                                  padding: const EdgeInsets.all(12),
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        trip.title,
+                                        style: const TextStyle(
+                                          fontSize: 18,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+
+                                      const SizedBox(height: 5),
+
+                                      Text(
+                                        "${trip.location} • ${trip.date}",
+                                        style: const TextStyle(
+                                          color: Colors.black54,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
           ),
         ],
       ),

@@ -23,8 +23,8 @@ app.use("/api/itinerary", itineraryRoutes);
 app.use("/api/routing", routingRoutes);
 app.use("/api/places", placesRoutes);
 
-// 5. Health Check Endpoint
-app.get("/api/health", (req, res) => {
+// 5. Health Check Endpoints
+app.get(["/health", "/api/health"], (req, res) => {
   res.json({ status: "OK", timestamp: new Date() });
 });
 
