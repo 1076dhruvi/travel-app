@@ -1,0 +1,540 @@
+{
+  "title": "Chalo Mumbai Darshan",
+  "description": "12-hour guided AC bus tour, multilingual live guide, guide charges included",
+  "timing": {
+    "pickup": "7:00 to 8:00 AM",
+    "return": "8:00 to 9:00 PM"
+  },
+  "pricing": {
+    "disclaimer": "prices may change",
+    "seats": [
+      {
+        "location": "Thane, Panvel, Borivali",
+        "price": 499
+      },
+      {
+        "location": "CSMT",
+        "price": 349
+      }
+    ]
+  },
+  "transport": {
+    "type": "AC bus",
+    "routes": "Boarding points across Mumbai, Thane, Navi Mumbai and Panvel, two routes"
+  },
+  "cancellation": "Free cancellation up to 12 hours before the trip",
+  "stops": [
+    {
+      "stopNumber": 1,
+      "title": "CST (Chhatrapati Shivaji Terminus)",
+      "type": "selfie-point",
+      "location": "Dr. D.N. Road, Fort, Mumbai",
+      "duration": null,
+      "description": "UNESCO World Heritage Site. Gothic Revival masterpiece built in 1888 with an ornate stone facade, stained-glass windows, and a star-chamber dome — one of India's most stunning railway stations.",
+      "highlights": [
+        "UNESCO World Heritage Site",
+        "Selfie point",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 2,
+      "title": "BMC Headquarters",
+      "type": "selfie-point",
+      "location": "Mahapalika Marg, Fort, Mumbai",
+      "duration": null,
+      "description": "Gothic-style civic building housing Mumbai's municipal government. The ornamental stone carvings mirror CST's architecture — both designed during the same Victorian Gothic era.",
+      "highlights": [
+        "Victorian Gothic architecture",
+        "Selfie point",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 3,
+      "title": "Aram Wada Pav",
+      "type": "food",
+      "location": "Near CSMT, Fort, Mumbai",
+      "duration": "15 min",
+      "description": "Legendary wada pav stall near CSMT station, serving Mumbai's signature street food since decades. A spicy potato fritter in a soft bun with chutneys — this is where Mumbai's favourite snack was perfected.",
+      "highlights": [
+        "Iconic street food",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 4,
+      "title": "Horniman Circle",
+      "type": "selfie-point",
+      "location": "Fort, South Mumbai",
+      "duration": null,
+      "description": "A beautiful circular garden surrounded by neoclassical heritage buildings in the heart of Fort. Famous as a Bollywood film shooting location and a peaceful oasis amidst South Mumbai's hustle.",
+      "highlights": [
+        "Photo stop",
+        "Heritage area",
+        "Bollywood shoot location"
+      ]
+    },
+    {
+      "stopNumber": 5,
+      "title": "The Asiatic Society Mumbai",
+      "type": "halt",
+      "location": "Shahid Bhagat Singh Road, Fort, Mumbai",
+      "duration": "10 min",
+      "description": "One of India's oldest libraries (1804). The neoclassical building with its grand staircase houses over 100,000 books and rare manuscripts. A temple of knowledge in the heart of the city.",
+      "highlights": [
+        "Established 1804",
+        "Educational stop"
+      ]
+    },
+    {
+      "stopNumber": 6,
+      "title": "Kala Ghoda",
+      "type": "on-the-way",
+      "location": "Kala Ghoda, Fort, Mumbai",
+      "duration": null,
+      "description": "Mumbai's art district — a vibrant stretch of galleries, boutiques, and street art. The annual Kala Ghoda Arts Festival transforms this area into a cultural carnival.",
+      "highlights": [
+        "Mumbai's art district",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 7,
+      "title": "Leopold Café",
+      "type": "on-the-way",
+      "location": "Colaba, Mumbai",
+      "duration": null,
+      "description": "Iconic café since 1871, immortalised in Gregory David Roberts' novel Shantaram. The bullet holes from the 26/11 attacks have been preserved as a memorial. A must-know landmark for every Mumbai visitor.",
+      "highlights": [
+        "Since 1871 — Shantaram fame",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 8,
+      "title": "Colaba Causeway Market",
+      "type": "on-the-way",
+      "location": "Colaba, Mumbai",
+      "duration": null,
+      "description": "Mumbai's most vibrant street shopping destination. Stalls selling everything from oxidised jewellery to affordable fashion, home decor, and antiques. The energy of the market is visible even from the bus.",
+      "highlights": [
+        "Mumbai's iconic street market",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 9,
+      "title": "Taj Mahal Palace Hotel",
+      "type": "selfie-point",
+      "location": "Apollo Bunder, Colaba, South Mumbai",
+      "duration": null,
+      "description": "India's first luxury hotel, built in 1903 by Jamsetji Tata after being refused entry to a Europeans-only hotel. The red-domed landmark facing the Gateway is 120+ years of defiance, elegance, and Mumbai's spirit — all in one building.",
+      "highlights": [
+        "Selfie point",
+        "Heritage landmark",
+        "Featured in films",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 10,
+      "title": "Gateway of India",
+      "type": "halt",
+      "location": "Apollo Bunder, Colaba, South Mumbai",
+      "duration": "45 min",
+      "description": "Mumbai's most photographed landmark. Built in 1924 to welcome King George V, this 26-metre basalt arch now stands as the city's unofficial welcome gate — where the Arabian Sea meets a century of history.",
+      "highlights": [
+        "Photo stop",
+        "Heritage monument",
+        "Waterfront views",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 11,
+      "title": "Sailing Boat Ride",
+      "type": "halt",
+      "location": "Gateway of India Jetty, Colaba, Mumbai",
+      "duration": "30 min",
+      "description": "A 30-minute boat ride along Mumbai's coastline from the Gateway jetty. See the city skyline, the Taj from the water, and the Arabian Sea up close. Voted the favourite experience by 26 out of 68 survey respondents. Kids especially love this.",
+      "highlights": [
+        "On the water",
+        "Family favourite",
+        "Kids love this",
+        "Scenic views"
+      ]
+    },
+    {
+      "stopNumber": 12,
+      "title": "Chhatrapati Shivaji Maharaj Vastu Sangrahalay (CSMVS)",
+      "type": "halt",
+      "location": "M.G. Road, Fort, Mumbai",
+      "duration": "50 min",
+      "description": "Mumbai's premier museum housed in a stunning Indo-Saracenic building. World-class collection spanning Indus Valley artefacts, Mughal miniature paintings, Indian sculpture, natural history, and European art.",
+      "highlights": [
+        "World-class museum",
+        "Family friendly",
+        "Educational"
+      ]
+    },
+    {
+      "stopNumber": 13,
+      "title": "Jehangir Art Gallery",
+      "type": "halt",
+      "location": "M.G. Road, Kala Ghoda, Fort, Mumbai",
+      "duration": "15 min",
+      "description": "Mumbai's most accessible art gallery with rotating exhibitions of contemporary Indian art. Free entry makes it perfect for a quick 15-minute browse, located right next to the CSMVS museum.",
+      "highlights": [
+        "Contemporary Indian art",
+        "Free entry"
+      ]
+    },
+    {
+      "stopNumber": 14,
+      "title": "Paradox Museum (Optional)",
+      "type": "halt",
+      "location": "South Mumbai",
+      "duration": "1 hr",
+      "description": "An interactive museum of optical illusions and mind-bending exhibits. Great fun for families and kids with dozens of photo opportunities at every turn. Can be skipped if short on time — entirely optional add-on.",
+      "highlights": [
+        "Fun for kids",
+        "Instagram-worthy",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 15,
+      "title": "Rajabai Clock Tower",
+      "type": "on-the-way",
+      "location": "Mumbai University Campus, Fort, Mumbai",
+      "duration": null,
+      "description": "65-metre Venetian Gothic tower inside Mumbai University campus. Modelled after London's Big Ben, it chimes with musical melodies and is visible across South Mumbai's skyline.",
+      "highlights": [
+        "65-metre Venetian Gothic tower",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 16,
+      "title": "Mumbai High Court",
+      "type": "on-the-way",
+      "location": "Fort, Mumbai",
+      "duration": null,
+      "description": "Gothic Revival courthouse built in 1878 with stunning stained-glass windows and a soaring central tower. One of the finest judicial buildings in India.",
+      "highlights": [
+        "Gothic Revival, built 1878",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 17,
+      "title": "Oval Maidan",
+      "type": "on-the-way",
+      "location": "Churchgate, Mumbai",
+      "duration": null,
+      "description": "Iconic cricket ground flanked by Art Deco buildings on one side and Victorian Gothic on the other — two UNESCO-listed architectural styles in a single frame. Local cricket matches add to the charm.",
+      "highlights": [
+        "UNESCO dual-style backdrop",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 18,
+      "title": "Mantralaya",
+      "type": "on-the-way",
+      "location": "Madame Cama Road, Nariman Point, Mumbai",
+      "duration": null,
+      "description": "Maharashtra's state secretariat and seat of the Chief Minister's office. The imposing government building overlooks the Arabian Sea at Nariman Point.",
+      "highlights": [
+        "Maharashtra state secretariat",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 19,
+      "title": "Marine Drive (Queen's Necklace)",
+      "type": "halt",
+      "location": "Netaji Subhash Chandra Bose Road, South Mumbai",
+      "duration": "10 min",
+      "description": "Mumbai's 3.6-km seafront promenade, famously called the Queen's Necklace for its arc of glittering streetlights at night. Lined with Art Deco buildings now part of a UNESCO World Heritage ensemble. Sit on the sea wall, feel the breeze, and take in the Arabian Sea.",
+      "highlights": [
+        "Photo stop",
+        "Seafront promenade",
+        "Family friendly",
+        "UNESCO heritage zone"
+      ]
+    },
+    {
+      "stopNumber": 20,
+      "title": "Wankhede Stadium",
+      "type": "on-the-way",
+      "location": "D Road, Churchgate, Mumbai",
+      "duration": null,
+      "description": "India's cricketing cathedral. Home ground of Mumbai Indians (IPL) and where India won the 2011 Cricket World Cup. Kids will recognise it instantly.",
+      "highlights": [
+        "2011 World Cup venue",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 21,
+      "title": "Girgaon Chowpatty",
+      "type": "on-the-way",
+      "location": "Girgaon Chowpatty, Mumbai",
+      "duration": null,
+      "description": "Mumbai's beloved beach at the end of Marine Drive. Famous for bhel puri, pav bhaji, and the spectacular Ganpati Visarjan immersions during Ganesh Chaturthi.",
+      "highlights": [
+        "Famous street food beach",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 22,
+      "title": "Jain Temple (Malabar Hill)",
+      "type": "on-the-way",
+      "location": "Malabar Hill, Mumbai",
+      "duration": null,
+      "description": "An ornate Jain temple visible from the road as the bus climbs Malabar Hill. Intricate marble carvings and mirror-work decoration make it one of Mumbai's most visually striking religious sites.",
+      "highlights": [
+        "Ornate Jain temple",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 27,
+      "title": "Malabar Hills Forest Walkway",
+      "type": "on-the-way",
+      "location": "Malabar Hill, Mumbai",
+      "duration": null,
+      "description": "A peaceful nature walk through the green canopy of Malabar Hill — primarily for nature lovers seeking a quiet moment. Skip-friendly if short on time.",
+      "highlights": [
+        "Green canopy nature walk",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 28,
+      "title": "Antilia (Ambani Residence)",
+      "type": "on-the-way",
+      "location": "Altamount Road, Cumballa Hill, Mumbai",
+      "duration": null,
+      "description": "The world's most expensive private residence — a 27-storey skyscraper belonging to Mukesh Ambani. Every floor has a unique design. The guide shares stories of its scale and cost.",
+      "highlights": [
+        "World's most expensive home",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 29,
+      "title": "Mahalaxmi Temple",
+      "type": "halt",
+      "location": "Bhulabhai Desai Road, Mahalaxmi West, Mumbai",
+      "duration": "35 min",
+      "description": "One of Mumbai's oldest and most revered temples, dedicated to the Goddess of Wealth. Built circa 1785 on a hillock overlooking the Arabian Sea. Houses the Tridevi — Mahalaxmi, Mahakali, and Mahasaraswati — adorned in gold and pearls.",
+      "highlights": [
+        "Spiritual experience",
+        "200+ year old temple",
+        "Family pilgrimage",
+        "Sea-facing promenade"
+      ]
+    },
+    {
+      "stopNumber": 30,
+      "title": "Haji Ali Dargah",
+      "type": "on-the-way",
+      "location": "Lala Lajpat Rai Marg, Worli, Mumbai",
+      "duration": null,
+      "description": "15th-century mosque and tomb on a tidal islet connected to the mainland by a 500-metre causeway. At high tide, it appears to float on the sea — a breathtaking sight from the bus.",
+      "highlights": [
+        "15th-century dargah on sea",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 31,
+      "title": "Nehru Planetarium",
+      "type": "on-the-way",
+      "location": "Dr. E. Moses Road, Worli, Mumbai",
+      "duration": null,
+      "description": "A dome-shaped planetarium great for families and kids. Offers sky shows and interactive science exhibits about space and astronomy.",
+      "highlights": [
+        "Great for families and kids",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 32,
+      "title": "Nehru Science Centre + Orama 4D Show",
+      "type": "halt",
+      "location": "Dr. E. Moses Road, Worli, Mumbai",
+      "duration": "50 min",
+      "description": "India's largest interactive science museum with 500+ hands-on exhibits. The adjacent Orama 4D theatre adds motion seats, wind, and water effects. Top recommendation for families with children aged 5–15.",
+      "highlights": [
+        "Best for kids (5–15)",
+        "500+ interactive exhibits",
+        "Family favourite",
+        "Orama 4D show"
+      ]
+    },
+    {
+      "stopNumber": 33,
+      "title": "Siddhivinayak Temple",
+      "type": "halt",
+      "location": "Prabhadevi, Mumbai",
+      "duration": "35 min",
+      "description": "Mumbai's most beloved Ganesh temple, built in 1801. The name means 'Ganesha who grants your wish.' Bollywood stars, cricket legends, and millions of devotees come here to seek blessings. The gold-plated inner sanctum and right-trunk Ganesha idol are one of a kind.",
+      "highlights": [
+        "Spiritual experience",
+        "200+ year heritage",
+        "Family pilgrimage",
+        "Mumbai's most famous temple"
+      ]
+    },
+    {
+      "stopNumber": 34,
+      "title": "Lunch Break near Siddhivinayak",
+      "type": "food",
+      "location": "Prabhadevi area restaurants, Mumbai",
+      "duration": "30 min",
+      "description": "A dedicated lunch halt in the Prabhadevi area near Siddhivinayak Temple. Multiple vegetarian and non-vegetarian restaurant options are available within walking distance. A well-timed break to recharge the family.",
+      "highlights": [
+        "Dedicated lunch break",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 35,
+      "title": "National Museum of Indian Cinema (Bollywood Museum)",
+      "type": "halt",
+      "location": "National Museum of Indian Cinema, Gulshan Mahal, Mumbai",
+      "duration": "45 min",
+      "description": "Explore the journey of Indian cinema from silent films to blockbusters. Interactive exhibits, vintage cameras, classic movie posters, and recreated film sets make this a delight for Bollywood-loving families.",
+      "highlights": [
+        "Bollywood experience",
+        "Great for kids (8+)",
+        "Family friendly",
+        "Interactive exhibits"
+      ]
+    },
+    {
+      "stopNumber": 36,
+      "title": "Coastal Road + Bandra-Worli Sea Link",
+      "type": "on-the-way",
+      "location": "Bandra–Worli, Mumbai",
+      "duration": null,
+      "description": "A spectacular drive combining Mumbai's newest Coastal Road with the iconic 5.6-km cable-stayed Sea Link bridge. Panoramic views of the coastline and city skyline from 130 feet above sea level. A highlight of the entire bus journey.",
+      "highlights": [
+        "130ft above sea level views",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 37,
+      "title": "Bandra Bandstand — Mannat (SRK House)",
+      "type": "selfie-point",
+      "location": "Bandstand, Bandra West, Mumbai",
+      "duration": null,
+      "description": "The iconic Bandra Band Stand promenade and the stretch where Bollywood royalty lives. The guide points out Mannat — Shah Rukh Khan's house — which draws massive crowds of fans daily. A selfie outside Mannat is a must for SRK fans.",
+      "highlights": [
+        "Shah Rukh Khan's Mannat",
+        "Selfie point",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 38,
+      "title": "Salman Khan House — Galaxy Apartments",
+      "type": "on-the-way",
+      "location": "Bandra West, Mumbai",
+      "duration": null,
+      "description": "Popular celebrity spot in Bandra where fans gather regularly. The guide shares Bollywood anecdotes about Salman Khan as the bus passes Galaxy Apartments.",
+      "highlights": [
+        "Salman Khan's Galaxy Apartments",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 39,
+      "title": "Sachin Tendulkar House",
+      "type": "on-the-way",
+      "location": "Bandra West, Mumbai",
+      "duration": null,
+      "description": "Home of the cricket legend. Popular with cricket fans — the guide narrates Tendulkar's iconic career as the bus passes by.",
+      "highlights": [
+        "Sachin Tendulkar's home",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 40,
+      "title": "Carter Road Bandra",
+      "type": "on-the-way",
+      "location": "Carter Road, Bandra West, Mumbai",
+      "duration": null,
+      "description": "Trendy seafront promenade with sunset views, popular with families and couples. Lined with cafes and art installations. A glimpse of modern Bandra's lifestyle.",
+      "highlights": [
+        "Trendy seafront promenade",
+        "Guided commentary"
+      ]
+    },
+    {
+      "stopNumber": 41,
+      "title": "Juhu Beach",
+      "type": "halt",
+      "location": "Juhu Tara Road, Juhu, Mumbai",
+      "duration": "45 min",
+      "description": "Mumbai's most famous beach and the perfect finale to your day. Sink your feet in the sand, watch the sunset over the Arabian Sea, and feast on Mumbai's legendary street food — pav bhaji, bhel puri, gola (ice candy), and fresh coconut water. This is where Mumbai Darshan ends and Mumbai memories begin.",
+      "highlights": [
+        "Beach experience",
+        "Street food paradise",
+        "Sunset views",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 42,
+      "title": "Snacks at Juhu Chaupati",
+      "type": "food",
+      "location": "Juhu Beach stalls, Juhu, Mumbai",
+      "duration": "15 min",
+      "description": "A dedicated snack stop at the Juhu Beach food stalls. Grab pav bhaji, bhel puri, gola, vada pav, or fresh coconut water from the iconic beachfront vendors. The final food moment of your Mumbai Darshan.",
+      "highlights": [
+        "Iconic Mumbai street food",
+        "Kids love this",
+        "Family friendly"
+      ]
+    },
+    {
+      "stopNumber": 43,
+      "title": "Bombay By Night",
+      "type": "on-the-way",
+      "location": "Return journey, Mumbai",
+      "duration": null,
+      "description": "The return journey offers a glimpse of Mumbai's iconic nightscape — illuminated Marine Drive (the Queen's Necklace in full glow), lit-up Sea Link, and the sparkling city skyline. The guide shares closing stories as the city transforms from day to night.",
+      "highlights": [
+        "Queen's Necklace in full glow",
+        "Closing stories from the guide"
+      ]
+    }
+  ],
+  "boardingPoints": [
+    {
+      "name": "From Thane",
+      "routeId": "enoBUpQC",
+      "text": "Thane, Mulund, Bhandup, Vikhroli, Ghatkopar, Chembur, CSTM"
+    },
+    {
+      "name": "From Panvel",
+      "routeId": "aPjFlOHK",
+      "text": "Panvel, Khanda Colony, Kalamboli, Kamothe, Kharghar, Belapur, Seawood, Nerul, Jui Nagar, Sanpada, Vashi, Chembur"
+    },
+    {
+      "name": "From Borivali",
+      "routeId": "dHIrjQgM",
+      "text": "Dahisar, Borivali, Kandivali, Malad, Goregaon, Jogeshwari, Andheri East, Chakala, Ville Parle, Santacruz, Bandra, Mahim, Dadar, Byculla"
+    }
+  ],
+  "infoUrl": "https://chalo.com/mumbai/mumbai-darshan",
+  "bookingUrl": "https://chalo.com/app/mumbai-darshan"
+}

@@ -1,5 +1,6 @@
 import express from "express";
 import {
+  getApiKey,
   autocomplete,
   placeDetails,
   reverseGeocodeCoords,
@@ -7,6 +8,7 @@ import {
 
 const router = express.Router();
 
+router.get("/key", getApiKey);
 router.post("/autocomplete", autocomplete);
 router.post("/details", placeDetails);
 router.post("/reverse-geocode", reverseGeocodeCoords);

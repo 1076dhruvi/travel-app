@@ -34,22 +34,35 @@ export async function generateItineraryPlan(destination, days = 2, interests = [
     });
   }
 
+  const isMumbai = destination.toLowerCase().includes("mumbai");
+  const mumbaiCuratedContext = isMumbai
+    ? `
+CURATED CANDIDATE ATTRACTIONS FOR MUMBAI (Select unique, diverse candidates across different days):
+- South Mumbai (Fort, Colaba, Marine Drive): Gateway of India, Marine Drive, The Asiatic Society Mumbai, Horniman Circle, Flora Fountain, Colaba Causeway, Nariman Point
+- Central / Seaside: Shree Siddhivinayak Temple, Haji Ali Dargah, Nehru Science Centre, Mahalakshmi Temple, Worli Sea Face
+- Bandra & Suburbs: Bandra Fort (Castella de Aguada), Mount Mary Basilica, Bandra Bandstand, Carter Road Promenade
+- North Suburbs & Nature: Juhu Beach, Kanheri Caves, Sanjay Gandhi National Park, Global Vipassana Pagoda
+`
+    : "";
+
   const prompt = `You are an expert geographical travel planner.
 Create a ${days}-day travel itinerary for ${destination}.
 
 Traveller interests: ${interests.length > 0 ? interests.join(", ") : "general sightseeing"}.
-
-CLUSTERING RULES (MANDATORY):
-1. Cluster places strictly by proximity so each day covers ONE distinct geographic area or neighbourhood of ${destination}.
-2. NO area or neighbourhood may repeat on another day.
-3. Include 3 to 4 real, verifiable tourist attractions per day.
-4. Use ONLY real attractions searchable on Google Maps by their official name.
-5. Do NOT include generic activities like "Food Tour", "Shopping Walk", "Sunset Cruise".
-6. Do NOT fabricate arrival/leave times, travel distances, durations, or opening hours. External APIs will fetch them.
+${mumbaiCuratedContext}
+TRIP-WIDE PLACE UNIQUENESS & INTEGRITY (MANDATORY):
+1. EACH ATTRACTION OR PLACE MAY APPEAR AT MOST ONCE ACROSS THE ENTIRE ${days}-DAY TRIP.
+2. Absolutely NO attraction may repeat across multiple days. Every single place must be unique.
+3. Return real, verifiable, distinct place names found on Google Maps.
+4. Cluster places strictly by proximity so each day covers ONE distinct geographic neighbourhood or area (within ~5 km radius).
+5. NO area or neighbourhood may repeat on another day.
+6. Include 3 to 4 real tourist attractions per day.
+7. Do NOT include generic activities like "Food Tour", "Shopping Walk", "Sunset Cruise".
+8. Do NOT fabricate arrival/leave times, travel distances, durations, or opening hours. External APIs will fetch them.
 
 FOR EACH ATTRACTION, provide ONLY:
 - "name": Official Google Maps name with city (e.g. "Mattancherry Palace, Kochi")
-- "description": A single concise one-line reason to visit (e.g. "Historic 16th-century palace featuring elaborate Hindu temple murals and royal portraits.")
+- "description": A single concise one-line reason to visit.
 - "bestTime": Best time of day ("Morning", "Afternoon", "Evening", or "Sunset")
 
 Return STRICT JSON matching this schema:

@@ -2,12 +2,17 @@ class StartPoint {
   final String name;
   final double latitude;
   final double longitude;
+  final String source; // 'gps' | 'search'
   final String departureTime;
+
+  double get lat => latitude;
+  double get lng => longitude;
 
   StartPoint({
     required this.name,
     required this.latitude,
     required this.longitude,
+    this.source = 'gps',
     this.departureTime = "09:00",
   });
 
@@ -15,7 +20,9 @@ class StartPoint {
     return {
       'name': name,
       'lat': latitude,
+      'lng': longitude,
       'lon': longitude,
+      'source': source,
       'departureTime': departureTime,
     };
   }
@@ -26,9 +33,11 @@ class StartPoint {
       latitude: (map['lat'] as num?)?.toDouble() ??
           (map['latitude'] as num?)?.toDouble() ??
           0.0,
-      longitude: (map['lon'] as num?)?.toDouble() ??
+      longitude: (map['lng'] as num?)?.toDouble() ??
+          (map['lon'] as num?)?.toDouble() ??
           (map['longitude'] as num?)?.toDouble() ??
           0.0,
+      source: map['source']?.toString() ?? 'gps',
       departureTime: map['departureTime']?.toString() ?? '09:00',
     );
   }

@@ -4,6 +4,16 @@ import {
   reverseGeocode,
 } from "../services/placesService.js";
 
+export const getApiKey = (req, res) => {
+  const googleApiKey =
+    process.env["GOOGLE_PLACES_API_KEY"] ||
+    process.env["GOOGLE_MAPS_API_KEY"] ||
+    process.env["GOOGLE_API_KEY"] ||
+    process.env["GEMINI_API_KEY"] ||
+    "";
+  return res.json({ apiKey: googleApiKey });
+};
+
 export const autocomplete = async (req, res) => {
   try {
     const { input, sessionToken, destination } = req.body;
