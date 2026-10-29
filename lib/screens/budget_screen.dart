@@ -132,7 +132,6 @@ class _BudgetScreenState extends State<BudgetScreen> {
       backgroundColor: const Color(0xFFF5F6FA),
       appBar: AppBar(
         title: const Text("Budget Dashboard"),
-        backgroundColor: Colors.deepPurple,
         elevation: 0,
       ),
 
@@ -153,7 +152,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ? [Colors.redAccent, Colors.red]
                         : warning
                         ? [Colors.orange, Colors.deepOrange]
-                        : [Colors.deepPurple, Colors.purple],
+                        : [const Color(0xFF0F766E), const Color(0xFF115E59)],
                   ),
                 ),
                 child: Column(
@@ -221,7 +220,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
+                      backgroundColor: const Color(0xFF0F766E),
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -303,7 +302,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   child: ListTile(
                     leading: const Icon(
                       Icons.monetization_on,
-                      color: Colors.deepPurple,
+                      color: Color(0xFF0F766E),
                     ),
                     title:
                     Text("${e['title']} - ₹${e['amount']}"),

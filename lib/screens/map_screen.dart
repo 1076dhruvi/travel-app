@@ -6,6 +6,7 @@ import 'package:maplibre/maplibre.dart';
 import 'package:geolocator/geolocator.dart' as geo;
 import 'package:url_launcher/url_launcher.dart';
 import '../models/itinerary.dart';
+import '../theme/app_theme.dart';
 
 export '../models/itinerary.dart';
 
@@ -48,20 +49,11 @@ class _MapScreenState extends State<MapScreen> {
   // In-memory cache for OSRM routes to avoid repeating requests
   static final Map<String, List<List<double>>> _osrmCache = {};
 
-  // ── Day colour palette ────────────────────────────────────
-  final List<Color> dayColors = [
-    const Color(0xFF673AB7), // Deep Purple
-    const Color(0xFF00897B), // Teal
-    const Color(0xFFE65100), // Deep Orange
-    const Color(0xFFD81B60), // Pink
-    const Color(0xFF1E88E5), // Blue
-    const Color(0xFFF57F17), // Amber
-  ];
+  // ── Coordinated Day colour palette (AppTheme) ─────────────
+  List<Color> get dayColors => AppTheme.dayColors;
 
   Color _getDayColor(int dayNum) {
-    var effectiveDay = dayNum;
-    if (effectiveDay < 1) effectiveDay = 1;
-    return dayColors[(effectiveDay - 1) % dayColors.length];
+    return AppTheme.getDayColor(dayNum);
   }
 
   String _colorToHex(Color color) {
@@ -71,6 +63,80 @@ class _MapScreenState extends State<MapScreen> {
     return '#${r.toRadixString(16).padLeft(2, '0')}'
         '${g.toRadixString(16).padLeft(2, '0')}'
         '${b.toRadixString(16).padLeft(2, '0')}';
+  }
+
+  String _getModeHexColor(String mode) {
+    return AppTheme.getModeHexColor(mode);
+  }
+
+  // ── Open full day route in Google Maps (Maps URLs API) ────
+  Future<void> _openInGoogleMaps() async {
+    try {
+      final filtered = _filteredPlaces;
+      if (filtered.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('No stops for selected day.')),
+        );
+        return;
+      }
+
+      // Origin: day start point or first stop
+      final startLat = widget.startPoint?.latitude ?? filtered.first.latitude;
+      final startLng = widget.startPoint?.longitude ?? filtered.first.longitude;
+      final origin = '$startLat,$startLng';
+
+      // Destination: last stop
+      final dest = filtered.last;
+      final destination = '${dest.latitude},${dest.longitude}';
+
+      // Waypoints: up to 9 intermediate stops (Maps URLs max)
+      final intermediates = filtered.length > 1
+          ? filtered.sublist(0, filtered.length - 1)
+          : <ItineraryPlace>[];
+      final waypointList = intermediates
+          .take(9)
+          .map((p) => '${p.latitude},${p.longitude}')
+          .toList();
+
+      // Determine travel mode for URL
+      final selectedLeg = _filteredLegs.isNotEmpty ? _filteredLegs.first : null;
+      String travelMode = 'driving';
+      if (selectedLeg != null) {
+        final m = selectedLeg.mode.toLowerCase();
+        if (m.contains('walk')) {
+          travelMode = 'walking';
+        } else if (m.contains('transit') || m.contains('bus') || m.contains('train') || m.contains('metro')) {
+          travelMode = 'transit';
+        } else if (m.contains('bike') || m.contains('cycle')) {
+          travelMode = 'bicycling';
+        }
+      }
+
+      // Build Maps URL using Uri.https for proper encoding
+      final params = <String, String>{
+        'api': '1',
+        'origin': origin,
+        'destination': destination,
+        'travelmode': travelMode,
+      };
+      if (waypointList.isNotEmpty) {
+        params['waypoints'] = waypointList.join('|');
+      }
+      final uri = Uri.https('www.google.com', '/maps/dir/', params);
+
+      // Use LaunchMode.externalApplication — do NOT gate on canLaunchUrl
+      // (canLaunchUrl returns false on Android 11+ without <queries> entries)
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Could not open Google Maps: $e'),
+            backgroundColor: Colors.red.shade700,
+          ),
+        );
+      }
+    }
   }
 
   List<int> get _availableDays {
@@ -181,6 +247,15 @@ class _MapScreenState extends State<MapScreen> {
     if (widget.startPoint != null) {
       allLats.add(widget.startPoint!.latitude);
       allLons.add(widget.startPoint!.longitude);
+    }
+
+    for (final leg in _filteredLegs) {
+      for (final pt in leg.polyline) {
+        if (pt.length >= 2) {
+          allLats.add(pt[0]);
+          allLons.add(pt[1]);
+        }
+      }
     }
 
     if (allLats.isEmpty) {
@@ -301,9 +376,6 @@ class _MapScreenState extends State<MapScreen> {
         final sourceId = 'leg-src-$day-$i';
         final layerId = 'leg-layer-$day-$i';
 
-        final effectiveDay = day == 0 ? 1 : day;
-        final color = _getDayColor(effectiveDay);
-        final hexColor = _colorToHex(color);
 
         // Prepare GeoJSON coordinates: MapLibre requires [lon, lat]
         List<List<double>> geoJsonCoords = [];
@@ -360,15 +432,16 @@ class _MapScreenState extends State<MapScreen> {
         });
 
         // Styling based on mode:
-        // solid drive/cab, dashed walk, other distinct style for transit
+        // solid drive/cab, dashed walk, distinct pattern for transit
         final modeLower = leg.mode.toLowerCase();
+        final modeHexColor = _getModeHexColor(leg.mode);
         final Map<String, Object> paintProps;
 
         if (modeLower.contains('walk')) {
           paintProps = {
-            'line-color': hexColor,
-            'line-width': 3.5,
-            'line-opacity': 0.9,
+            'line-color': modeHexColor,
+            'line-width': 4.0,
+            'line-opacity': 0.95,
             'line-dasharray': [2.0, 2.0], // Dashed walk
           };
         } else if (modeLower.contains('bus') ||
@@ -376,17 +449,17 @@ class _MapScreenState extends State<MapScreen> {
             modeLower.contains('transit') ||
             modeLower.contains('metro')) {
           paintProps = {
-            'line-color': hexColor,
+            'line-color': modeHexColor,
             'line-width': 5.5,
             'line-opacity': 0.95,
-            'line-dasharray': [1.0, 1.5], // Distinct transit pattern
+            'line-dasharray': [1.0, 1.2], // Distinct transit pattern
           };
         } else {
           // Solid drive / cab
           paintProps = {
-            'line-color': hexColor,
-            'line-width': 4.5,
-            'line-opacity': 0.9,
+            'line-color': modeHexColor,
+            'line-width': 5.0,
+            'line-opacity': 0.95,
           };
         }
 
@@ -646,11 +719,23 @@ class _MapScreenState extends State<MapScreen> {
                     padding: const EdgeInsets.symmetric(vertical: 13),
                   ),
                   onPressed: () async {
-                    final uri = Uri.parse(
-                      'https://www.google.com/maps/search/?api=1&query=${place.latitude},${place.longitude}',
-                    );
-                    if (await canLaunchUrl(uri)) {
+                    try {
+                      // Single place — open in Maps search (no canLaunchUrl gate)
+                      final uri = Uri.https(
+                        'www.google.com',
+                        '/maps/search/',
+                        {'api': '1', 'query': '${place.latitude},${place.longitude}'},
+                      );
                       await launchUrl(uri, mode: LaunchMode.externalApplication);
+                    } catch (e) {
+                      if (ctx.mounted) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          SnackBar(
+                            content: Text('Could not open Google Maps: $e'),
+                            backgroundColor: Colors.red.shade700,
+                          ),
+                        );
+                      }
                     }
                   },
                 ),
@@ -697,7 +782,7 @@ class _MapScreenState extends State<MapScreen> {
               ),
               Row(
                 children: [
-                  Icon(_getTransportIcon(leg.mode), color: Colors.deepPurple, size: 24),
+                  Icon(_getTransportIcon(leg.mode), color: AppTheme.getModeColor(leg.mode), size: 24),
                   const SizedBox(width: 10),
                   Text(
                     'Travel Leg Details',
@@ -744,13 +829,13 @@ class _MapScreenState extends State<MapScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                   decoration: BoxDecoration(
-                    color: Colors.deepPurple.shade50,
+                    color: AppTheme.modeTransitLight,
                     borderRadius: BorderRadius.circular(10),
-                    border: Border.all(color: Colors.deepPurple.shade200),
+                    border: Border.all(color: AppTheme.modeTransitBorder),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.directions_bus, size: 18, color: Colors.deepPurple),
+                      const Icon(Icons.directions_bus, size: 18, color: AppTheme.modeTransit),
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
@@ -758,7 +843,7 @@ class _MapScreenState extends State<MapScreen> {
                           style: const TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.bold,
-                            color: Colors.deepPurple,
+                            color: AppTheme.modeTransit,
                           ),
                         ),
                       ),
@@ -817,7 +902,7 @@ class _MapScreenState extends State<MapScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppTheme.primaryTeal,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -1023,7 +1108,7 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     ),
                     selected: _selectedDay == 0,
-                    selectedColor: Colors.deepPurple,
+                    selectedColor: AppTheme.primaryTeal,
                     backgroundColor: Colors.white.withValues(alpha: 0.95),
                     elevation: 3,
                     onSelected: (selected) {
@@ -1203,7 +1288,7 @@ class _MapScreenState extends State<MapScreen> {
               FloatingActionButton.small(
                 heroTag: 'legs_info',
                 backgroundColor: Colors.white,
-                foregroundColor: Colors.deepPurple,
+                foregroundColor: AppTheme.primaryTeal,
                 onPressed: () {
                   if (_filteredLegs.isNotEmpty) {
                     _showLegDetailsSheet(_filteredLegs.first);
@@ -1212,6 +1297,15 @@ class _MapScreenState extends State<MapScreen> {
                 tooltip: 'Leg Details',
                 child: const Icon(Icons.alt_route),
               ),
+            const SizedBox(height: 8),
+            FloatingActionButton.small(
+              heroTag: 'open_gmaps',
+              backgroundColor: Colors.white,
+              foregroundColor: Colors.green.shade700,
+              onPressed: _openInGoogleMaps,
+              tooltip: 'Open full route in Google Maps',
+              child: const Icon(Icons.directions),
+            ),
             const SizedBox(height: 8),
             FloatingActionButton(
               heroTag: 'fit_all',

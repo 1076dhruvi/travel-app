@@ -51,8 +51,6 @@ FOR EACH ATTRACTION, provide ONLY:
 - "name": Official Google Maps name with city (e.g. "Mattancherry Palace, Kochi")
 - "description": A single concise one-line reason to visit (e.g. "Historic 16th-century palace featuring elaborate Hindu temple murals and royal portraits.")
 - "bestTime": Best time of day ("Morning", "Afternoon", "Evening", or "Sunset")
-- "lat": Approximate latitude as a number
-- "lon": Approximate longitude as a number
 
 Return STRICT JSON matching this schema:
 {
@@ -65,9 +63,7 @@ Return STRICT JSON matching this schema:
         {
           "name": "Attraction Name, City",
           "description": "One-line factual reason to visit.",
-          "bestTime": "Morning",
-          "lat": 9.9654,
-          "lon": 76.2421
+          "bestTime": "Morning"
         }
       ]
     }

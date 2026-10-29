@@ -2,6 +2,7 @@ import express from "express";
 import cors from "cors";
 import itineraryRoutes from "./routes/itineraryRoutes.js";
 import routingRoutes from "./routes/routingRoutes.js";
+import placesRoutes from "./routes/placesRoutes.js";
 
 const app = express();
 
@@ -20,6 +21,7 @@ app.use((req, res, next) => {
 // 4. Register API Routes
 app.use("/api/itinerary", itineraryRoutes);
 app.use("/api/routing", routingRoutes);
+app.use("/api/places", placesRoutes);
 
 // 5. Health Check Endpoint
 app.get("/api/health", (req, res) => {

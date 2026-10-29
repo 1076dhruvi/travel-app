@@ -181,3 +181,260 @@ export async function getPlaceDetails(placeName, city = "") {
 
   return null;
 }
+
+export async function getCityCenter(cityName) {
+  if (!cityName) return null;
+
+  const cacheKey = `city_center_${cityName.toLowerCase()}`.trim();
+  if (placesCache.has(cacheKey)) {
+    return placesCache.get(cacheKey);
+  }
+
+  const googleApiKey =
+    process.env["GOOGLE_PLACES_API_KEY"] ||
+    process.env["GOOGLE_MAPS_API_KEY"] ||
+    process.env["GOOGLE_API_KEY"] ||
+    process.env["GEMINI_API_KEY"];
+
+  if (googleApiKey) {
+    try {
+      const response = await axios.get(
+        "https://maps.googleapis.com/maps/api/place/textsearch/json",
+        {
+          params: {
+            query: `${cityName}, India`,
+            key: googleApiKey,
+          },
+          timeout: 5000,
+        }
+      );
+
+      const candidate = response.data?.results?.[0];
+      if (candidate && candidate.geometry?.location) {
+        const result = {
+          name: candidate.name || cityName,
+          lat: candidate.geometry.location.lat,
+          lon: candidate.geometry.location.lng,
+          address: candidate.formatted_address || cityName,
+        };
+        placesCache.set(cacheKey, result);
+        return result;
+      }
+    } catch (_) {}
+  }
+
+  // Fallback
+  try {
+    const geo = await geocodePlace(cityName);
+    if (geo) {
+      const result = {
+        name: geo.name || cityName,
+        lat: geo.lat,
+        lon: geo.lng ?? geo.lon,
+        address: cityName,
+      };
+      placesCache.set(cacheKey, result);
+      return result;
+    }
+  } catch (_) {}
+
+  return null;
+}
+
+/**
+ * Autocomplete place predictions using Google Places API (India-biased, with session token)
+ */
+export async function getAutocompleteSuggestions(input, sessionToken = null, destination = "") {
+  if (!input || typeof input !== "string" || input.trim().length === 0) {
+    return [];
+  }
+
+  const googleApiKey =
+    process.env["GOOGLE_PLACES_API_KEY"] ||
+    process.env["GOOGLE_MAPS_API_KEY"] ||
+    process.env["GOOGLE_API_KEY"] ||
+    process.env["GEMINI_API_KEY"];
+
+  if (!googleApiKey) {
+    // Fallback to geoapify autocomplete if Google key missing
+    try {
+      const encoded = encodeURIComponent(input.trim());
+      const geoUrl = `https://api.geoapify.com/v1/geocode/autocomplete?text=${encoded}&limit=5&filter=countrycode:in&apiKey=${process.env["GEOAPIFY_API_KEY"] || "70101d58fc2d4441a91d29558f9157bb"}`;
+      const geoRes = await axios.get(geoUrl, { timeout: 4000 });
+      const features = geoRes.data?.features || [];
+      return features.map((f) => ({
+        placeId: f.properties?.place_id || f.properties?.osm_id || `${f.properties?.lat},${f.properties?.lon}`,
+        primaryText: f.properties?.name || f.properties?.city || f.properties?.formatted,
+        secondaryText: [f.properties?.city, f.properties?.state, f.properties?.country].filter(Boolean).join(", "),
+        fullText: f.properties?.formatted || f.properties?.name,
+        lat: f.properties?.lat,
+        lon: f.properties?.lon,
+      }));
+    } catch (_) {
+      return [];
+    }
+  }
+
+  try {
+    const params = {
+      input: input.trim(),
+      key: googleApiKey,
+      components: "country:in",
+    };
+
+    if (sessionToken) {
+      params.sessiontoken = sessionToken;
+    }
+
+    const response = await axios.get(
+      "https://maps.googleapis.com/maps/api/place/autocomplete/json",
+      {
+        params,
+        timeout: 5000,
+      }
+    );
+
+    const predictions = response.data?.predictions || [];
+    return predictions.map((p) => ({
+      placeId: p.place_id,
+      primaryText: p.structured_formatting?.main_text || p.description,
+      secondaryText: p.structured_formatting?.secondary_text || "",
+      fullText: p.description,
+    }));
+  } catch (err) {
+    console.warn("Places autocomplete error:", err.message);
+    return [];
+  }
+}
+
+/**
+ * Fetch authoritative coordinates and details for a selected placeId
+ */
+export async function getPlaceDetailsById(placeId, sessionToken = null) {
+  if (!placeId) return null;
+
+  const cacheKey = `place_id_${placeId}`;
+  if (placesCache.has(cacheKey)) {
+    return placesCache.get(cacheKey);
+  }
+
+  const googleApiKey =
+    process.env["GOOGLE_PLACES_API_KEY"] ||
+    process.env["GOOGLE_MAPS_API_KEY"] ||
+    process.env["GOOGLE_API_KEY"] ||
+    process.env["GEMINI_API_KEY"];
+
+  if (googleApiKey) {
+    try {
+      const params = {
+        place_id: placeId,
+        key: googleApiKey,
+        fields: "name,geometry,formatted_address,opening_hours",
+      };
+
+      if (sessionToken) {
+        params.sessiontoken = sessionToken;
+      }
+
+      const response = await axios.get(
+        "https://maps.googleapis.com/maps/api/place/details/json",
+        {
+          params,
+          timeout: 5000,
+        }
+      );
+
+      const candidate = response.data?.result;
+      if (candidate && candidate.geometry?.location) {
+        let hours = "check locally";
+        if (candidate.opening_hours) {
+          hours = normalizeOpeningHours(candidate.opening_hours);
+        }
+
+        const result = {
+          name: candidate.name,
+          lat: candidate.geometry.location.lat,
+          lon: candidate.geometry.location.lng,
+          address: candidate.formatted_address || "",
+          openingHours: hours,
+        };
+
+        placesCache.set(cacheKey, result);
+        return result;
+      }
+    } catch (err) {
+      console.warn("Place details error:", err.message);
+    }
+  }
+
+  // If placeId happens to be "lat,lon" from Geoapify fallback
+  if (placeId.includes(",")) {
+    const [lat, lon] = placeId.split(",").map(Number);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      return {
+        name: "Selected Location",
+        lat: lat,
+        lon: lon,
+        address: "",
+        openingHours: "check locally",
+      };
+    }
+  }
+
+  return null;
+}
+
+/**
+ * Reverse geocodes coordinates to a clean place/neighborhood name
+ */
+export async function reverseGeocode(lat, lon) {
+  if (lat == null || lon == null) return null;
+
+  const cacheKey = `rev_geo_${Number(lat).toFixed(4)},${Number(lon).toFixed(4)}`;
+  if (placesCache.has(cacheKey)) {
+    return placesCache.get(cacheKey);
+  }
+
+  const googleApiKey =
+    process.env["GOOGLE_PLACES_API_KEY"] ||
+    process.env["GOOGLE_MAPS_API_KEY"] ||
+    process.env["GOOGLE_API_KEY"] ||
+    process.env["GEMINI_API_KEY"];
+
+  if (googleApiKey) {
+    try {
+      const response = await axios.get(
+        "https://maps.googleapis.com/maps/api/geocode/json",
+        {
+          params: {
+            latlng: `${lat},${lon}`,
+            key: googleApiKey,
+          },
+          timeout: 5000,
+        }
+      );
+
+      const results = response.data?.results || [];
+      if (results.length > 0) {
+        // Find best neighborhood or sublocality
+        let bestName = results[0].formatted_address;
+        for (const res of results) {
+          const types = res.types || [];
+          if (types.includes("sublocality") || types.includes("neighborhood") || types.includes("point_of_interest")) {
+            bestName = res.formatted_address.split(",").slice(0, 2).join(",").trim();
+            break;
+          }
+        }
+
+        placesCache.set(cacheKey, bestName);
+        return bestName;
+      }
+    } catch (_) {}
+  }
+
+  // Fallback to coordinates
+  const fallback = `Location (${Number(lat).toFixed(3)}, ${Number(lon).toFixed(3)})`;
+  placesCache.set(cacheKey, fallback);
+  return fallback;
+}
+

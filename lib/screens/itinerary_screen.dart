@@ -1,11 +1,16 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
+import '../config/fare_config.dart';
 import '../models/trip.dart';
 import '../services/database_service.dart';
 import '../services/geocoding_service.dart';
+import '../services/google_places_service.dart';
 import '../services/itinerary_service.dart';
 import '../services/routing_service.dart';
+import '../theme/app_theme.dart';
 import 'map_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
@@ -20,13 +25,16 @@ class ItineraryScreen extends StatefulWidget {
   State<ItineraryScreen> createState() => _ItineraryScreenState();
 }
 
-class _ItineraryScreenState extends State<ItineraryScreen> {
+class _ItineraryScreenState extends State<ItineraryScreen>
+    with SingleTickerProviderStateMixin {
   final Set<String> selectedInterests = {};
   final Set<String> expandedStopNames = {};
+  final Set<String> expandedLegIndices = {};
 
   final ItineraryService itineraryService = ItineraryService();
   final RoutingService routingService = RoutingService();
   final GeocodingService geocodingService = GeocodingService();
+  final GooglePlacesService googlePlacesService = GooglePlacesService();
   final DatabaseService databaseService = DatabaseService();
 
   Map<String, dynamic>? routingData;
@@ -38,12 +46,27 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   bool isLoading = false;
   bool isPreferencesExpanded = false;
 
-  // Start Point Detection & Manual Entry
+  // Start Point Detection & Places Autocomplete
+  final TextEditingController searchController = TextEditingController();
+  final FocusNode searchFocusNode = FocusNode();
+  Timer? _debounceTimer;
+  String? _placesSessionToken;
+  List<PlacePrediction> autocompleteSuggestions = [];
+  bool isSearchingPlaces = false;
+  bool hasResolvedStartCoords = false;
+
+  // Source of current start point: 'gps', 'search', or 'saved'
+  String _startSource = 'gps';
+
   String startPointName = "Detecting start location...";
   double? startLat;
   double? startLon;
   bool isDetectingLocation = false;
   String? locationStatusMessage;
+
+  // Shimmer skeleton animation
+  late AnimationController _shimmerController;
+  late Animation<double> _shimmerAnimation;
 
   // Selected Day Filter: 0 = All Days, 1 = Day 1, etc.
   int selectedDayTab = 0;
@@ -61,19 +84,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     "Photography",
   ];
 
-  final List<Color> dayColors = [
-    const Color(0xFF673AB7), // Deep Purple
-    const Color(0xFF00897B), // Teal
-    const Color(0xFFE65100), // Deep Orange
-    const Color(0xFFD81B60), // Pink
-    const Color(0xFF1E88E5), // Blue
-    const Color(0xFFF57F17), // Amber
-  ];
+  List<Color> get dayColors => AppTheme.dayColors;
 
   Color _getDayColor(int dayNum) {
-    var effectiveDay = dayNum;
-    if (effectiveDay < 1) effectiveDay = 1;
-    return dayColors[(effectiveDay - 1) % dayColors.length];
+    return AppTheme.getDayColor(dayNum);
   }
 
   IconData _getTransportIcon(String? mode) {
@@ -98,16 +112,148 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   @override
   void initState() {
     super.initState();
+    _shimmerController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1400),
+    );
+    _shimmerAnimation = Tween<double>(begin: -1.0, end: 2.0).animate(
+      CurvedAnimation(parent: _shimmerController, curve: Curves.easeInOutSine),
+    );
+
     _detectUserLocation();
     _loadSavedItinerary();
   }
 
-  // ── Start Point & Location Handling ────────────────────────
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    searchController.dispose();
+    searchFocusNode.dispose();
+    _shimmerController.dispose();
+    super.dispose();
+  }
 
-  Future<void> _detectUserLocation() async {
+  // ── Start Point & Autocomplete Handling ──────────────────────
+
+  void _onSearchChanged(String query) {
+    _debounceTimer?.cancel();
+    if (query.trim().isEmpty) {
+      setState(() {
+        autocompleteSuggestions = [];
+        isSearchingPlaces = false;
+        hasResolvedStartCoords = false;
+      });
+      return;
+    }
+
+    // Invalidate previous resolved coordinates when user changes text
+    // to strictly avoid regenerating with stale coordinates
+    hasResolvedStartCoords = false;
+
+    _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
+      if (!mounted) return;
+      setState(() {
+        isSearchingPlaces = true;
+      });
+
+      _placesSessionToken ??=
+          DateTime.now().millisecondsSinceEpoch.toString();
+
+      final results = await googlePlacesService.getAutocomplete(
+        query,
+        sessionToken: _placesSessionToken,
+        destination: widget.trip.location,
+      );
+
+      if (mounted) {
+        setState(() {
+          autocompleteSuggestions = results;
+          isSearchingPlaces = false;
+        });
+      }
+    });
+  }
+
+  Future<void> _onSelectPrediction(PlacePrediction prediction) async {
+    searchFocusNode.unfocus();
+    setState(() {
+      autocompleteSuggestions = [];
+      isDetectingLocation = true;
+      locationStatusMessage = null;
+      startPointName = prediction.primaryText;
+      searchController.text = prediction.primaryText;
+    });
+
+    try {
+      double? lat = prediction.lat;
+      double? lon = prediction.lon;
+      String resolvedName = prediction.primaryText;
+
+      if (lat == null || lon == null) {
+        final details = await googlePlacesService.getPlaceDetails(
+          prediction.placeId,
+          sessionToken: _placesSessionToken,
+        );
+        if (details != null && details['lat'] != null && details['lon'] != null) {
+          lat = (details['lat'] as num).toDouble();
+          lon = (details['lon'] as num).toDouble();
+          resolvedName = details['name']?.toString() ?? prediction.primaryText;
+        }
+      }
+
+      // Reset session token after selection
+      _placesSessionToken = null;
+
+      if (lat != null && lon != null) {
+        if (mounted) {
+          setState(() {
+            _startSource = 'search';
+            startLat = lat;
+            startLon = lon;
+            startPointName = resolvedName;
+            searchController.text = resolvedName;
+            hasResolvedStartCoords = true;
+            isDetectingLocation = false;
+            // Clear cached legs so itinerary recalculates from new start
+            itineraryLegs = [];
+            itineraryStartPoint = StartPoint(
+              name: resolvedName,
+              latitude: lat!,
+              longitude: lon!,
+            );
+          });
+
+          // Immediately regenerate itinerary with newly verified coordinates
+          await _generateItinerary();
+        }
+      } else {
+        if (mounted) {
+          setState(() {
+            isDetectingLocation = false;
+            locationStatusMessage =
+                "Could not get coordinates for selected place. Please try another.";
+          });
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          isDetectingLocation = false;
+          locationStatusMessage = "Error selecting place: $e";
+        });
+      }
+    }
+  }
+
+  Future<void> _detectUserLocation({bool forceOverwrite = false}) async {
+    // Never overwrite a user-typed (source=search) start unless the user
+    // explicitly tapped the GPS icon (forceOverwrite=true).
+    if (_startSource == 'search' && !forceOverwrite) return;
+
     setState(() {
       isDetectingLocation = true;
       locationStatusMessage = null;
+      autocompleteSuggestions = [];
     });
 
     try {
@@ -116,9 +262,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         if (mounted) {
           setState(() {
             isDetectingLocation = false;
-            startPointName = "${widget.trip.location} City Center";
+            // Only set a fallback name if nothing has been resolved yet
+            if (!hasResolvedStartCoords) {
+              startPointName = "${widget.trip.location} City Center";
+              searchController.text = startPointName;
+            }
             locationStatusMessage =
-                "Location services disabled on device. Set start point manually or enable GPS.";
+                "Location services disabled on device. Search your starting hotel or address.";
           });
         }
         return;
@@ -134,9 +284,12 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         if (mounted) {
           setState(() {
             isDetectingLocation = false;
-            startPointName = "${widget.trip.location} City Center";
+            if (!hasResolvedStartCoords) {
+              startPointName = "${widget.trip.location} City Center";
+              searchController.text = startPointName;
+            }
             locationStatusMessage =
-                "Location permission denied. Enter your hotel or starting address manually.";
+                "Location permission denied. Search your hotel name above.";
           });
         }
         return;
@@ -146,156 +299,50 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         desiredAccuracy: LocationAccuracy.high,
       );
 
+      // Reverse geocode GPS coordinates to a friendly name
+      final friendlyName = await googlePlacesService.reverseGeocode(
+        position.latitude,
+        position.longitude,
+      );
+
+      final finalName = friendlyName ?? "Current Location";
+
       if (mounted) {
         setState(() {
+          _startSource = 'gps';
           startLat = position.latitude;
           startLon = position.longitude;
-          startPointName =
-              "Current Location (${position.latitude.toStringAsFixed(3)}, ${position.longitude.toStringAsFixed(3)})";
+          startPointName = finalName;
+          searchController.text = finalName;
+          hasResolvedStartCoords = true;
           locationStatusMessage = null;
           isDetectingLocation = false;
 
           itineraryStartPoint = StartPoint(
-            name: startPointName,
+            name: finalName,
             latitude: position.latitude,
             longitude: position.longitude,
           );
         });
+
+        // Regenerate itinerary with current GPS location
+        if (itineraryData != null) {
+          await _generateItinerary();
+        }
       }
     } catch (e) {
       if (mounted) {
         setState(() {
           isDetectingLocation = false;
-          startPointName = "${widget.trip.location} City Center";
+          if (!hasResolvedStartCoords) {
+            startPointName = "${widget.trip.location} City Center";
+            searchController.text = startPointName;
+          }
           locationStatusMessage =
-              "Could not retrieve GPS location. Tap 'Set Manually' to enter your starting point.";
+              "Could not retrieve GPS location. Search your starting address.";
         });
       }
     }
-  }
-
-  void _showManualStartPointDialog() {
-    final textController = TextEditingController(
-      text: startPointName.startsWith("Current Location") ? "" : startPointName,
-    );
-    bool isSearching = false;
-    String? searchError;
-
-    showDialog(
-      context: context,
-      builder: (dialogCtx) => StatefulBuilder(
-        builder: (ctx, setDialogState) {
-          return AlertDialog(
-            title: const Row(
-              children: [
-                Icon(Icons.edit_location_alt, color: Colors.deepPurple),
-                SizedBox(width: 8),
-                Text("Set Starting Point"),
-              ],
-            ),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  "Enter your hotel name, airport, or starting address. The itinerary and shortest travel paths will be calculated from here.",
-                  style: TextStyle(fontSize: 13, color: Colors.black87),
-                ),
-                const SizedBox(height: 14),
-                TextField(
-                  controller: textController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: "e.g. Grand Hyatt ${widget.trip.location}",
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    prefixIcon: const Icon(Icons.place_outlined),
-                    suffixIcon: textController.text.isNotEmpty
-                        ? IconButton(
-                            icon: const Icon(Icons.clear, size: 18),
-                            onPressed: () => setDialogState(() => textController.clear()),
-                          )
-                        : null,
-                  ),
-                ),
-                if (searchError != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    searchError!,
-                    style: const TextStyle(color: Colors.red, fontSize: 12),
-                  ),
-                ],
-                if (isSearching) ...[
-                  const SizedBox(height: 12),
-                  const Center(child: CircularProgressIndicator()),
-                ],
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogCtx),
-                child: const Text("Cancel"),
-              ),
-              ElevatedButton(
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
-                ),
-                onPressed: isSearching
-                    ? null
-                    : () async {
-                        final input = textController.text.trim();
-                        if (input.isEmpty) return;
-
-                        setDialogState(() {
-                          isSearching = true;
-                          searchError = null;
-                        });
-
-                        try {
-                          final coords = await geocodingService.getCoordinates(
-                            "$input, ${widget.trip.location}",
-                          );
-
-                          if (coords != null) {
-                            if (mounted) {
-                              setState(() {
-                                startPointName = input;
-                                startLat = coords["lat"];
-                                startLon = coords["lon"];
-                                locationStatusMessage = null;
-                                itineraryStartPoint = StartPoint(
-                                  name: input,
-                                  latitude: coords["lat"]!,
-                                  longitude: coords["lon"]!,
-                                );
-                              });
-                            }
-                            if (dialogCtx.mounted) {
-                              Navigator.pop(dialogCtx);
-                            }
-                          } else {
-                            setDialogState(() {
-                              isSearching = false;
-                              searchError =
-                                  "Location not found. Please try a more specific name.";
-                            });
-                          }
-                        } catch (e) {
-                          setDialogState(() {
-                            isSearching = false;
-                            searchError = "Geocoding error: $e";
-                          });
-                        }
-                      },
-                child: const Text("Set Location"),
-              ),
-            ],
-          );
-        },
-      ),
-    );
   }
 
   // ── Database Persistence ──────────────────────────────────
@@ -327,7 +374,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
         StartPoint? loadedStart;
         if (parsed["startPoint"] != null) {
-          loadedStart = StartPoint.fromMap(Map<String, dynamic>.from(parsed["startPoint"]));
+          loadedStart = StartPoint.fromMap(
+            Map<String, dynamic>.from(parsed["startPoint"]),
+          );
         }
 
         setState(() {
@@ -336,10 +385,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           itineraryMapPlaces = loadedPlaces;
           itineraryLegs = loadedLegs;
           if (loadedStart != null) {
+            _startSource = 'saved';
             itineraryStartPoint = loadedStart;
             startPointName = loadedStart.name;
+            searchController.text = loadedStart.name;
             startLat = loadedStart.latitude;
             startLon = loadedStart.longitude;
+            hasResolvedStartCoords = true;
           }
           isPreferencesExpanded = false;
         });
@@ -373,9 +425,24 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   // ── Itinerary Generation Pipeline ──────────────────────────
 
   Future<void> _generateItinerary() async {
+    // Sanity check: Never regenerate with stale coordinates
+    if (!hasResolvedStartCoords && (startLat == null || startLon == null)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            "Please select a starting place from the search suggestions or tap GPS to fix coordinates.",
+          ),
+          backgroundColor: Colors.deepOrange,
+        ),
+      );
+      return;
+    }
+
     setState(() {
       isLoading = true;
+      autocompleteSuggestions = [];
     });
+    _shimmerController.repeat();
 
     try {
       debugPrint("Generating refined itinerary for ${widget.trip.location}...");
@@ -441,11 +508,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         itineraryData = result;
         itineraryMapPlaces = allPlaces;
         itineraryLegs = allLegs;
-        if (resolvedStart != null) {
+        // Only update startPoint from backend if the user hasn't typed a search choice
+        if (resolvedStart != null && _startSource != 'search') {
           itineraryStartPoint = resolvedStart;
           startPointName = resolvedStart.name;
+          searchController.text = resolvedStart.name;
           startLat = resolvedStart.latitude;
           startLon = resolvedStart.longitude;
+          hasResolvedStartCoords = true;
         }
         isPreferencesExpanded = false;
         selectedDayTab = 0;
@@ -471,6 +541,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         setState(() {
           isLoading = false;
         });
+        _shimmerController.stop();
       }
     }
   }
@@ -497,6 +568,278 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     );
   }
 
+  // ── Dynamic Transport Options & Fare Fallbacks ───────────
+
+  List<TransportOption> _ensureCompleteOptions(ItineraryLeg leg) {
+    List<TransportOption> opts = List.from(leg.options);
+
+    if (opts.isEmpty) {
+      opts.add(
+        TransportOption(
+          mode: leg.mode,
+          title: leg.transitLine ?? leg.mode.toUpperCase(),
+          duration: leg.duration,
+          durationMinutes: leg.durationMinutes,
+          durationSeconds: leg.durationSeconds,
+          distance: leg.distance,
+          distanceMeters: leg.distanceMeters,
+          cost: leg.cost ?? (leg.mode == 'walk' ? 'Free' : 'check locally'),
+          transitLine: leg.transitLine,
+          boardingStop: leg.boardingStop,
+          alightingStop: leg.alightingStop,
+          stopCount: leg.stopCount,
+          departureTime: leg.departureTime,
+          polyline: leg.polyline,
+          steps: leg.steps,
+        ),
+      );
+    }
+
+    final double distKm = leg.distanceMeters > 0
+        ? (leg.distanceMeters / 1000.0)
+        : (double.tryParse(leg.distance.replaceAll(RegExp(r'[^0-9.]'), '')) ?? 1.0);
+    final int baseDriveMins = math.max(2, (distKm / 20.0 * 60).round());
+    final int driveSec = baseDriveMins * 60;
+    final int walkMins = math.max(2, (distKm / 4.5 * 60).round());
+    final int walkSec = walkMins * 60;
+
+    final hasWalk = opts.any((o) => o.mode == 'walk');
+    final hasTransit = opts.any((o) => o.mode == 'bus' || o.mode == 'train' || o.mode == 'metro');
+    final hasAuto = opts.any((o) => o.mode == 'auto');
+    final hasCab = opts.any((o) => o.mode == 'cab');
+
+    // 1. Walk option: time and distance
+    if (!hasWalk) {
+      opts.add(
+        TransportOption(
+          mode: 'walk',
+          title: 'Walk',
+          duration: '$walkMins min',
+          durationMinutes: walkMins,
+          durationSeconds: walkSec,
+          distance: '${distKm.toStringAsFixed(1)} km',
+          distanceMeters: (distKm * 1000).round(),
+          cost: 'Free',
+          steps: [
+            TransitStep(
+              type: 'walk',
+              instruction: 'Walk to ${leg.to} (${distKm.toStringAsFixed(1)} km)',
+              duration: '$walkMins min',
+              distance: '${distKm.toStringAsFixed(1)} km',
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 2. Transit option: if no data from API, show "check locally" instead of hiding it
+    if (!hasTransit) {
+      final transitMins = math.max(8, (distKm * 3.5 + 5).round());
+      opts.add(
+        TransportOption(
+          mode: 'bus',
+          title: 'Transit',
+          duration: '$transitMins min',
+          durationMinutes: transitMins,
+          durationSeconds: transitMins * 60,
+          distance: '${distKm.toStringAsFixed(1)} km',
+          distanceMeters: (distKm * 1000).round(),
+          cost: 'check locally',
+          transitLine: 'check locally',
+          steps: [
+            TransitStep(
+              type: 'transit',
+              instruction: 'Local bus/transit to ${leg.to} (check locally)',
+              lineName: 'check locally',
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 3. Auto option: Mumbai RTO fare card rates
+    if (!hasAuto) {
+      final autoFare = MumbaiFareRates.calculateAutoFare(distKm, baseDriveMins);
+      opts.add(
+        TransportOption(
+          mode: 'auto',
+          title: 'Auto',
+          duration: '$baseDriveMins min',
+          durationMinutes: baseDriveMins,
+          durationSeconds: driveSec,
+          distance: '${distKm.toStringAsFixed(1)} km',
+          distanceMeters: (distKm * 1000).round(),
+          cost: autoFare.label,
+          steps: [
+            TransitStep(
+              type: 'drive',
+              instruction: 'Auto-rickshaw ride to ${leg.to} (${distKm.toStringAsFixed(1)} km)',
+              duration: '$baseDriveMins min',
+              distance: '${distKm.toStringAsFixed(1)} km',
+            ),
+          ],
+        ),
+      );
+    }
+
+    // 4. Cab option: Mumbai RTO fare card rates
+    if (!hasCab) {
+      final cabFare = MumbaiFareRates.calculateCabFare(distKm, baseDriveMins);
+      opts.add(
+        TransportOption(
+          mode: 'cab',
+          title: 'Cab',
+          duration: '$baseDriveMins min',
+          durationMinutes: baseDriveMins,
+          durationSeconds: driveSec,
+          distance: '${distKm.toStringAsFixed(1)} km',
+          distanceMeters: (distKm * 1000).round(),
+          cost: cabFare.label,
+          steps: [
+            TransitStep(
+              type: 'drive',
+              instruction: 'Cab / Taxi ride to ${leg.to} (${distKm.toStringAsFixed(1)} km)',
+              duration: '$baseDriveMins min',
+              distance: '${distKm.toStringAsFixed(1)} km',
+            ),
+          ],
+        ),
+      );
+    }
+
+    return opts;
+  }
+
+  /// Default selection: walk if under 1 km (< 1000 m), otherwise the fastest
+  /// NON-walk option (any leg over 1 km must not default to Walk).
+  int _determineDefaultOptionIndex(List<TransportOption> options, int distanceMeters) {
+    if (options.isEmpty) return 0;
+    if (distanceMeters < 1000) {
+      final walkIdx = options.indexWhere((o) => o.mode == 'walk');
+      if (walkIdx != -1) return walkIdx;
+    }
+    // For >= 1 km: find fastest non-walk option
+    int fastestIdx = -1;
+    int minSec = 9999999;
+    for (int i = 0; i < options.length; i++) {
+      if (options[i].mode == 'walk') continue;
+      final sec = options[i].durationSeconds > 0
+          ? options[i].durationSeconds
+          : options[i].durationMinutes * 60;
+      if (sec > 0 && sec < minSec) {
+        minSec = sec;
+        fastestIdx = i;
+      }
+    }
+    // Fallback: if only walk is available, select it
+    if (fastestIdx == -1) {
+      return options.indexWhere((o) => o.mode == 'walk').clamp(0, options.length - 1);
+    }
+    return fastestIdx;
+  }
+
+  /// Computes day summary dynamically from the currently selected options of each leg.
+  Map<String, dynamic> _computeDaySummary(List daysList, int targetDay) {
+    int totalStops = 0;
+    double totalKm = 0.0;
+    int totalMinutes = 0;
+    int minCost = 0;
+    int maxCost = 0;
+    bool hasLocalCheck = false;
+
+    for (int d = 0; d < daysList.length; d++) {
+      final day = daysList[d];
+      final dayNum = day["day"] is int
+          ? day["day"]
+          : int.tryParse(day["day"].toString()) ?? (d + 1);
+
+      if (targetDay != 0 && dayNum != targetDay) continue;
+
+      final attractions = (day["attractions"] as List?) ?? [];
+      totalStops += attractions.length;
+
+      int legOffset = 0;
+      for (int prev = 0; prev < d; prev++) {
+        final prevLegs = (daysList[prev]["legs"] as List?) ?? [];
+        legOffset += prevLegs.length;
+      }
+
+      for (int i = 0; i < attractions.length; i++) {
+        final globalLegIdx = legOffset + i;
+        if (globalLegIdx < itineraryLegs.length) {
+          final leg = itineraryLegs[globalLegIdx];
+          final opts = _ensureCompleteOptions(leg);
+          final optIdx = leg.selectedOptionIndex.clamp(0, opts.length - 1);
+          final activeOpt = opts[optIdx];
+
+          // KM
+          final meters = activeOpt.distanceMeters > 0
+              ? activeOpt.distanceMeters
+              : leg.distanceMeters;
+          if (meters > 0) {
+            totalKm += meters / 1000.0;
+          } else {
+            final match = RegExp(r'([\d.]+)').firstMatch(activeOpt.distance);
+            if (match != null) {
+              totalKm += double.tryParse(match.group(1) ?? '0') ?? 0.0;
+            }
+          }
+
+          // Duration
+          final mins = activeOpt.durationMinutes > 0
+              ? activeOpt.durationMinutes
+              : (activeOpt.durationSeconds / 60).round();
+          if (mins > 0) {
+            totalMinutes += mins;
+          } else {
+            final match = RegExp(r'(\d+)').firstMatch(activeOpt.duration);
+            if (match != null) {
+              totalMinutes += int.tryParse(match.group(1) ?? '0') ?? 0;
+            }
+          }
+
+          // Cost
+          final costStr = activeOpt.cost;
+          if (costStr.toLowerCase().contains('check locally')) {
+            hasLocalCheck = true;
+          } else {
+            final (cLow, cHigh) = MumbaiFareRates.parseCostToRange(costStr);
+            minCost += cLow;
+            maxCost += cHigh;
+          }
+        }
+      }
+    }
+
+    String costText;
+    if (minCost == 0 && maxCost == 0) {
+      costText = hasLocalCheck ? "check locally" : "Free";
+    } else if (minCost == maxCost) {
+      costText = "₹$minCost est.";
+    } else {
+      costText = "est. ₹$minCost - ₹$maxCost";
+    }
+    if (hasLocalCheck && (minCost > 0 || maxCost > 0)) {
+      costText = "$costText + transit";
+    }
+
+    String timeText;
+    if (totalMinutes >= 60) {
+      final h = totalMinutes ~/ 60;
+      final m = totalMinutes % 60;
+      timeText = m > 0 ? "${h}h ${m}m" : "${h}h";
+    } else {
+      timeText = "$totalMinutes min";
+    }
+
+    return {
+      "stops": "$totalStops stops",
+      "km": "${totalKm.toStringAsFixed(1)} km",
+      "time": timeText,
+      "cost": costText,
+    };
+  }
+
   @override
   Widget build(BuildContext context) {
     final daysList = (itineraryData != null && itineraryData!["itinerary"] != null)
@@ -506,10 +849,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     final hasItinerary = daysList.isNotEmpty;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF8F9FA),
+      backgroundColor: AppTheme.backgroundSlate,
       appBar: AppBar(
         title: Text("${widget.trip.location} Itinerary"),
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppTheme.primaryTeal,
         foregroundColor: Colors.white,
         elevation: 0,
         actions: [
@@ -528,17 +871,23 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             // ── Top Summary & Action Banner ───────────────────
             _buildTopBanner(hasItinerary),
 
-            // ── Start Point Card ──────────────────────────────
+            // ── Rounded Search Bar Start Card with GPS inside ─
             _buildStartPointCard(),
+
+            // ── Day Summary at the Top (Stops, KM, Time, Cost) ─
+            if (hasItinerary && !isLoading)
+              _buildDaySummaryCard(daysList, selectedDayTab),
 
             // ── Expandable Preferences Section ───────────────
             _buildPreferencesSection(hasItinerary),
 
-            // ── Itinerary Content ────────────────────────────
-            if (hasItinerary) ...[
+            // ── Skeleton Loader or Itinerary Content ──────────
+            if (isLoading)
+              _buildSkeletonTimeline()
+            else if (hasItinerary) ...[
               _buildDayTabsBar(daysList),
               _buildDaysContent(daysList),
-            ] else if (!isLoading) ...[
+            ] else ...[
               _buildEmptyState(),
             ],
 
@@ -546,16 +895,16 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           ],
         ),
       ),
-      bottomNavigationBar: hasItinerary
+      bottomNavigationBar: hasItinerary && !isLoading
           ? Container(
               padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
               decoration: BoxDecoration(
                 color: Colors.white,
-                boxShadow: [
+                boxShadow: const [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.08),
+                    color: Color(0x140F172A),
                     blurRadius: 10,
-                    offset: const Offset(0, -3),
+                    offset: Offset(0, -3),
                   ),
                 ],
               ),
@@ -576,12 +925,12 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         ),
                         style: ElevatedButton.styleFrom(
                           backgroundColor: selectedDayTab == 0
-                              ? Colors.deepPurple
+                              ? AppTheme.primaryTeal
                               : _getDayColor(selectedDayTab),
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: BorderRadius.circular(14),
                           ),
                         ),
                         onPressed: () => _openMap(initialDay: selectedDayTab),
@@ -598,10 +947,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
   Widget _buildTopBanner(bool hasItinerary) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 16),
+      padding: const EdgeInsets.fromLTRB(20, 16, 20, 18),
       decoration: const BoxDecoration(
-        color: Colors.deepPurple,
-        borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
+        color: AppTheme.primaryTeal,
+        borderRadius: BorderRadius.vertical(bottom: Radius.circular(20)),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -616,9 +965,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     Text(
                       widget.trip.location,
                       style: const TextStyle(
-                        fontSize: 24,
+                        fontSize: 22,
                         fontWeight: FontWeight.bold,
                         color: Colors.white,
+                        letterSpacing: -0.3,
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -626,7 +976,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                       "${widget.trip.days} Days • ${itineraryMapPlaces.length} Stops • Clustered by Area",
                       style: const TextStyle(
                         color: Colors.white70,
-                        fontSize: 14,
+                        fontSize: 13,
                       ),
                     ),
                   ],
@@ -666,18 +1016,157 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     );
   }
 
-  Widget _buildStartPointCard() {
+  // ── Day Summary Card at the Top (Requirement 4 & 1) ───────────
+
+  Widget _buildDaySummaryCard(List daysList, int selectedDay) {
+    final summary = _computeDaySummary(daysList, selectedDay);
+    final String title = selectedDay == 0
+        ? "Trip Overview (${daysList.length} Days)"
+        : "Day $selectedDay Overview";
+
     return Container(
-      margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+      margin: const EdgeInsets.fromLTRB(16, 8, 16, 6),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.deepPurple.shade100),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderSlate),
         boxShadow: const [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
+            color: Color(0x080F172A),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text(
+                title,
+                style: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: AppTheme.textSlatePrimary,
+                ),
+              ),
+              const Spacer(),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryTealLight,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Text(
+                  "Interactive Totals",
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    color: AppTheme.primaryTealDark,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              _buildTopSummaryTile(
+                icon: Icons.place_outlined,
+                iconColor: AppTheme.primaryTeal,
+                label: "STOPS",
+                value: summary["stops"]!,
+              ),
+              const SizedBox(width: 8),
+              _buildTopSummaryTile(
+                icon: Icons.straighten,
+                iconColor: AppTheme.modeTransit,
+                label: "DISTANCE",
+                value: summary["km"]!,
+              ),
+              const SizedBox(width: 8),
+              _buildTopSummaryTile(
+                icon: Icons.timer_outlined,
+                iconColor: AppTheme.secondaryAmberDark,
+                label: "TIME",
+                value: summary["time"]!,
+              ),
+              const SizedBox(width: 8),
+              _buildTopSummaryTile(
+                icon: Icons.currency_rupee,
+                iconColor: AppTheme.modeCab,
+                label: "EST. COST",
+                value: summary["cost"]!,
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTopSummaryTile({
+    required IconData icon,
+    required Color iconColor,
+    required String label,
+    required String value,
+  }) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 6),
+        decoration: BoxDecoration(
+          color: AppTheme.backgroundSlate,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: AppTheme.borderSlate),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Icon(icon, size: 16, color: iconColor),
+            const SizedBox(height: 4),
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 9,
+                fontWeight: FontWeight.w600,
+                color: AppTheme.textSlateSecondary,
+                letterSpacing: 0.3,
+              ),
+              maxLines: 1,
+            ),
+            const SizedBox(height: 2),
+            Text(
+              value,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: AppTheme.textSlatePrimary,
+              ),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ── Rounded Search Bar Start Card with GPS Inside ─────────────
+
+  Widget _buildStartPointCard() {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderSlate),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x080F172A),
+            blurRadius: 8,
             offset: Offset(0, 2),
           ),
         ],
@@ -689,81 +1178,278 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             children: [
               Container(
                 padding: const EdgeInsets.all(6),
-                decoration: BoxDecoration(
-                  color: Colors.deepPurple.shade50,
+                decoration: const BoxDecoration(
+                  color: AppTheme.primaryTealLight,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.trip_origin, color: Colors.deepPurple, size: 18),
+                child: const Icon(Icons.trip_origin, color: AppTheme.primaryTeal, size: 16),
               ),
               const SizedBox(width: 8),
               const Expanded(
                 child: Text(
-                  "Itinerary Start Point",
+                  "Starting Point",
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.bold,
-                    color: Colors.black87,
+                    color: AppTheme.textSlatePrimary,
                   ),
                 ),
               ),
-              if (isDetectingLocation)
-                const SizedBox(
-                  width: 14,
-                  height: 14,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  startPointName,
-                  style: const TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
+              if (hasResolvedStartCoords)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: _startSource == 'search'
+                        ? AppTheme.primaryTealLight
+                        : AppTheme.modeWalkLight,
+                    borderRadius: BorderRadius.circular(10),
                   ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                  child: Text(
+                    _startSource == 'search' ? "Searched" : "GPS",
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: _startSource == 'search'
+                          ? AppTheme.primaryTealDark
+                          : AppTheme.modeWalk,
+                    ),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.gps_fixed, size: 14),
-                label: const Text("GPS", style: TextStyle(fontSize: 12)),
-                style: OutlinedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  visualDensity: VisualDensity.compact,
-                ),
-                onPressed: isDetectingLocation ? null : _detectUserLocation,
-              ),
-              const SizedBox(width: 6),
-              ElevatedButton.icon(
-                icon: const Icon(Icons.edit_location_alt, size: 14),
-                label: const Text("Edit", style: TextStyle(fontSize: 12)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.deepPurple,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                  visualDensity: VisualDensity.compact,
-                ),
-                onPressed: _showManualStartPointDialog,
-              ),
             ],
           ),
-          if (locationStatusMessage != null) ...[
+          const SizedBox(height: 10),
+
+          // Rounded search bar with GPS icon INSIDE it
+          TextField(
+            controller: searchController,
+            focusNode: searchFocusNode,
+            onChanged: _onSearchChanged,
+            style: const TextStyle(fontSize: 13, color: AppTheme.textSlatePrimary),
+            decoration: InputDecoration(
+              hintText: "Search hotel, airport, or landmark in ${widget.trip.location}...",
+              hintStyle: const TextStyle(fontSize: 13, color: AppTheme.textSlateSecondary),
+              prefixIcon: const Icon(Icons.search, size: 20, color: AppTheme.primaryTeal),
+              suffixIcon: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (searchController.text.isNotEmpty)
+                    IconButton(
+                      icon: const Icon(Icons.clear, size: 18, color: AppTheme.textSlateSecondary),
+                      onPressed: () {
+                        searchController.clear();
+                        setState(() {
+                          autocompleteSuggestions = [];
+                          hasResolvedStartCoords = false;
+                        });
+                      },
+                    ),
+                  IconButton(
+                    icon: (isDetectingLocation || isSearchingPlaces)
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primaryTeal,
+                            ),
+                          )
+                        : const Icon(Icons.gps_fixed, size: 20, color: AppTheme.primaryTeal),
+                    tooltip: "Use Current GPS Location",
+                    onPressed: isDetectingLocation
+                        ? null
+                        : () => _detectUserLocation(forceOverwrite: true),
+                  ),
+                  const SizedBox(width: 4),
+                ],
+              ),
+              filled: true,
+              fillColor: AppTheme.backgroundSlate,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppTheme.borderSlate),
+              ),
+              enabledBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppTheme.borderSlate),
+              ),
+              focusedBorder: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(16),
+                borderSide: const BorderSide(color: AppTheme.primaryTeal, width: 1.6),
+              ),
+            ),
+          ),
+
+          // Autocomplete Suggestions List
+          if (autocompleteSuggestions.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Container(
+              constraints: const BoxConstraints(maxHeight: 220),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(14),
+                border: Border.all(color: AppTheme.borderSlate),
+                boxShadow: const [
+                  BoxShadow(
+                    color: Color(0x140F172A),
+                    blurRadius: 8,
+                    offset: Offset(0, 3),
+                  ),
+                ],
+              ),
+              child: ListView.separated(
+                shrinkWrap: true,
+                padding: EdgeInsets.zero,
+                itemCount: autocompleteSuggestions.length,
+                separatorBuilder: (ctx, idx) => const Divider(height: 1, color: AppTheme.borderSlateLight),
+                itemBuilder: (ctx, idx) {
+                  final suggestion = autocompleteSuggestions[idx];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.place_outlined, color: AppTheme.primaryTeal, size: 20),
+                    title: Text(
+                      suggestion.primaryText,
+                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: AppTheme.textSlatePrimary),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    subtitle: suggestion.secondaryText.isNotEmpty
+                        ? Text(
+                            suggestion.secondaryText,
+                            style: const TextStyle(fontSize: 11, color: AppTheme.textSlateSecondary),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          )
+                        : null,
+                    onTap: () => _onSelectPrediction(suggestion),
+                  );
+                },
+              ),
+            ),
+          ],
+
+          // Show real lat/lng under start name
+          if (hasResolvedStartCoords && startLat != null && startLon != null) ...[
             const SizedBox(height: 6),
-            Text(
-              locationStatusMessage!,
-              style: TextStyle(fontSize: 11, color: Colors.amber.shade900),
+            Row(
+              children: [
+                Icon(
+                  _startSource == 'search' ? Icons.search : Icons.gps_fixed,
+                  size: 12,
+                  color: AppTheme.textSlateSecondary,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  '${startLat!.toStringAsFixed(5)}, ${startLon!.toStringAsFixed(5)}',
+                  style: const TextStyle(
+                    fontSize: 11,
+                    color: AppTheme.textSlateSecondary,
+                    fontFeatures: [FontFeature.tabularFigures()],
+                  ),
+                ),
+              ],
+            ),
+          ],
+
+          if (locationStatusMessage != null) ...[
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.info_outline, size: 14, color: AppTheme.secondaryAmberDark),
+                const SizedBox(width: 4),
+                Expanded(
+                  child: Text(
+                    locationStatusMessage!,
+                    style: const TextStyle(fontSize: 11, color: AppTheme.secondaryAmberDark),
+                  ),
+                ),
+              ],
             ),
           ],
         ],
       ),
     );
   }
+
+  // ── Skeleton Loader while Fetching (Requirement 6) ─────────
+
+  Widget _buildSkeletonTimeline() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _buildShimmerBox(height: 40, width: double.infinity, radius: 10),
+          const SizedBox(height: 16),
+          for (int i = 0; i < 3; i++) ...[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Column(
+                  children: [
+                    _buildShimmerBox(height: 32, width: 32, radius: 16),
+                    const SizedBox(height: 4),
+                    _buildShimmerBox(height: 70, width: 2.5, radius: 2),
+                  ],
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _buildShimmerBox(height: 20, width: 140, radius: 6),
+                      const SizedBox(height: 8),
+                      _buildShimmerBox(height: 14, width: double.infinity, radius: 4),
+                      const SizedBox(height: 6),
+                      _buildShimmerBox(height: 14, width: 180, radius: 4),
+                      const SizedBox(height: 10),
+                      Row(
+                        children: [
+                          _buildShimmerBox(height: 24, width: 80, radius: 12),
+                          const SizedBox(width: 8),
+                          _buildShimmerBox(height: 24, width: 80, radius: 12),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildShimmerBox({required double height, required double width, double radius = 8}) {
+    return AnimatedBuilder(
+      animation: _shimmerAnimation,
+      builder: (context, child) {
+        return Container(
+          height: height,
+          width: width,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(radius),
+            gradient: LinearGradient(
+              colors: [
+                Colors.grey.shade200,
+                Colors.grey.shade100,
+                Colors.grey.shade200,
+              ],
+              stops: [
+                (_shimmerAnimation.value - 0.3).clamp(0.0, 1.0),
+                _shimmerAnimation.value.clamp(0.0, 1.0),
+                (_shimmerAnimation.value + 0.3).clamp(0.0, 1.0),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ── Preferences Section ────────────────────────────────────
 
   Widget _buildPreferencesSection(bool hasItinerary) {
     if (!isPreferencesExpanded && hasItinerary) {
@@ -811,18 +1497,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                   interest,
                   style: TextStyle(
                     fontSize: 13,
-                    color: isSelected ? Colors.white : Colors.black87,
+                    color: isSelected ? Colors.white : AppTheme.textSlatePrimary,
                     fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
                   ),
                 ),
                 selected: isSelected,
-                selectedColor: Colors.deepPurple,
-                backgroundColor: Colors.grey.shade100,
+                selectedColor: AppTheme.primaryTeal,
+                backgroundColor: AppTheme.backgroundSlate,
                 checkmarkColor: Colors.white,
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   side: BorderSide(
-                    color: isSelected ? Colors.deepPurple : Colors.grey.shade300,
+                    color: isSelected ? AppTheme.primaryTeal : AppTheme.borderSlate,
                   ),
                 ),
                 onSelected: (selected) {
@@ -843,11 +1529,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             child: ElevatedButton(
               onPressed: isLoading ? null : _generateItinerary,
               style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.deepPurple,
+                backgroundColor: AppTheme.primaryTeal,
+                foregroundColor: Colors.white,
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: BorderRadius.circular(14),
                 ),
+                elevation: 1,
               ),
               child: isLoading
                   ? const Row(
@@ -883,6 +1571,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     );
   }
 
+  // ── Day Tabs Bar ───────────────────────────────────────────
+
   Widget _buildDayTabsBar(List daysList) {
     return Container(
       margin: const EdgeInsets.only(top: 8, bottom: 8),
@@ -902,12 +1592,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                   style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
                 ),
                 selected: isSelected,
-                selectedColor: Colors.deepPurple,
+                selectedColor: AppTheme.primaryTeal,
                 labelStyle: TextStyle(
-                  color: isSelected ? Colors.white : Colors.black87,
+                  color: isSelected ? Colors.white : AppTheme.textSlatePrimary,
                 ),
                 backgroundColor: Colors.white,
                 elevation: isSelected ? 2 : 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                  side: BorderSide(
+                    color: isSelected ? AppTheme.primaryTeal : AppTheme.borderSlate,
+                  ),
+                ),
                 onSelected: (sel) {
                   if (sel) setState(() => selectedDayTab = 0);
                 },
@@ -937,10 +1633,16 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
               selected: isSelected,
               selectedColor: color,
               labelStyle: TextStyle(
-                color: isSelected ? Colors.white : Colors.black87,
+                color: isSelected ? Colors.white : AppTheme.textSlatePrimary,
               ),
               backgroundColor: Colors.white,
               elevation: isSelected ? 2 : 0,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(14),
+                side: BorderSide(
+                  color: isSelected ? color : AppTheme.borderSlate,
+                ),
+              ),
               onSelected: (sel) {
                 if (sel) setState(() => selectedDayTab = dayNum);
               },
@@ -950,6 +1652,8 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       ),
     );
   }
+
+  // ── Days Content & Leg Logic ───────────────────────────────
 
   Widget _buildDaysContent(List daysList) {
     final filteredDays = selectedDayTab == 0
@@ -974,13 +1678,23 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
         final theme = day["theme"]?.toString() ?? "Day $dayNum Sightseeing";
         final area = day["area"]?.toString();
         final attractions = (day["attractions"] as List?) ?? [];
-        final legs = (day["legs"] as List?) ?? (day["travel"] as List?) ?? [];
+        final rawLegs = (day["legs"] as List?) ?? [];
         final color = _getDayColor(dayNum);
 
-        // Totals
-        final totalStops = day["totalStops"] ?? attractions.length;
-        final totalKm = day["totalKm"]?.toString() ?? "";
-        final totalTransit = day["totalTransitTime"]?.toString() ?? "";
+        // Compute global leg offset across all days
+        int legOffset = 0;
+        for (int d = 0; d < daysList.length; d++) {
+          final current = daysList[d];
+          final curNum = current["day"] is int
+              ? current["day"]
+              : int.tryParse(current["day"].toString()) ?? (d + 1);
+          if (curNum == dayNum) break;
+          final prevLegs = (current["legs"] as List?) ?? [];
+          legOffset += prevLegs.length;
+        }
+
+        // Dynamic day summary driven by current option choices
+        final daySummary = _computeDaySummary(daysList, dayNum);
 
         // Start point
         final dayStartPoint = day["startPoint"] != null
@@ -994,11 +1708,11 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           decoration: BoxDecoration(
             color: Colors.white,
             borderRadius: BorderRadius.circular(16),
-            border: Border.all(color: Colors.grey.shade200),
+            border: Border.all(color: AppTheme.borderSlate),
             boxShadow: const [
               BoxShadow(
-                color: Colors.black12,
-                blurRadius: 6,
+                color: Color(0x0A0F172A),
+                blurRadius: 8,
                 offset: Offset(0, 2),
               ),
             ],
@@ -1006,14 +1720,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // ── Day Header Banner with Area & Totals ──────
+              // ── Day Header Banner with Area & Dynamic Totals ──────
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                 decoration: BoxDecoration(
-                  color: color.withValues(alpha: 0.1),
+                  color: color.withValues(alpha: 0.08),
                   borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
                   border: Border(
-                    bottom: BorderSide(color: color.withValues(alpha: 0.2)),
+                    bottom: BorderSide(color: color.withValues(alpha: 0.15)),
                   ),
                 ),
                 child: Column(
@@ -1041,10 +1755,10 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         Expanded(
                           child: Text(
                             theme,
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 15,
                               fontWeight: FontWeight.bold,
-                              color: Colors.grey.shade900,
+                              color: AppTheme.textSlatePrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
@@ -1065,32 +1779,31 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                           const SizedBox(width: 4),
                           Text(
                             "Area: $area (No cross-area repetition)",
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade700,
+                              color: AppTheme.textSlateSecondary,
                             ),
                           ),
                         ],
                       ),
                     ],
-                    // Totals Row
+                    // Real-time dynamic totals for this day
                     const SizedBox(height: 8),
                     Container(
                       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
                       decoration: BoxDecoration(
                         color: Colors.white,
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.grey.shade300),
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: AppTheme.borderSlate),
                       ),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceAround,
                         children: [
-                          _buildMiniStat(Icons.flag_outlined, "$totalStops stops"),
-                          if (totalKm.isNotEmpty)
-                            _buildMiniStat(Icons.straighten, totalKm),
-                          if (totalTransit.isNotEmpty)
-                            _buildMiniStat(Icons.timer_outlined, totalTransit),
+                          _buildMiniStat(Icons.flag_outlined, daySummary["stops"]!),
+                          _buildMiniStat(Icons.straighten, daySummary["km"]!),
+                          _buildMiniStat(Icons.timer_outlined, daySummary["time"]!),
+                          _buildMiniStat(Icons.currency_rupee, daySummary["cost"]!),
                         ],
                       ),
                     ),
@@ -1100,14 +1813,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
               // ── Start Point Departure Row ──────────────────
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
                 child: Row(
                   children: [
                     Container(
                       width: 32,
                       height: 32,
-                      decoration: BoxDecoration(
-                        color: Colors.green.shade700,
+                      decoration: const BoxDecoration(
+                        color: AppTheme.primaryTeal,
                         shape: BoxShape.circle,
                       ),
                       child: const Icon(Icons.home_filled, color: Colors.white, size: 18),
@@ -1122,16 +1835,16 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                             style: const TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.bold,
-                              color: Colors.black87,
+                              color: AppTheme.textSlatePrimary,
                             ),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
                           Text(
                             "Departs at $departureTime",
-                            style: TextStyle(
+                            style: const TextStyle(
                               fontSize: 12,
-                              color: Colors.grey.shade600,
+                              color: AppTheme.textSlateSecondary,
                             ),
                           ),
                         ],
@@ -1141,21 +1854,31 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 ),
               ),
 
-              // ── Attractions Timeline & Legs ───────────────
+              // ── Attractions Timeline & Legs ────────────────
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: ListView.builder(
                   shrinkWrap: true,
                   physics: const NeverScrollableScrollPhysics(),
                   itemCount: attractions.length,
                   itemBuilder: (ctx, idx) {
                     final place = attractions[idx];
-                    final leg = (idx < legs.length) ? legs[idx] : null;
+                    final globalLegIdx = legOffset + idx;
+                    final leg = (globalLegIdx < itineraryLegs.length)
+                        ? itineraryLegs[globalLegIdx]
+                        : (idx < rawLegs.length)
+                            ? ItineraryLeg.fromMap(Map<String, dynamic>.from(rawLegs[idx]))
+                            : null;
 
                     return Column(
                       children: [
-                        // Leg connecting to this stop (Leg 0 is start->stop 1, Leg 1 is stop 1->stop 2)
-                        _buildTravelConnector(leg, color),
+                        // Leg connecting to this stop:
+                        // idx == 0: start -> stop 1
+                        // idx == 1: stop 1 -> stop 2
+                        // idx == N-1: stop N-1 -> stop N
+                        if (leg != null)
+                          _buildLegRow(leg, globalLegIdx, color),
+
                         // Stop card
                         _buildPlaceCard(place, idx + 1, color, dayNum),
                       ],
@@ -1174,14 +1897,14 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 14, color: Colors.grey.shade700),
+        Icon(icon, size: 13, color: AppTheme.textSlateSecondary),
         const SizedBox(width: 4),
         Text(
           label,
           style: const TextStyle(
-            fontSize: 12,
+            fontSize: 11,
             fontWeight: FontWeight.bold,
-            color: Colors.black87,
+            color: AppTheme.textSlatePrimary,
           ),
         ),
       ],
@@ -1208,7 +1931,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Number badge & Time column
+        // Number badge & Time column (Numbered stop marker)
         SizedBox(
           width: 58,
           child: Column(
@@ -1243,20 +1966,20 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                 const SizedBox(height: 4),
                 Text(
                   arrivalTime,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 11,
                     fontWeight: FontWeight.bold,
-                    color: Colors.grey.shade900,
+                    color: AppTheme.textSlatePrimary,
                   ),
                 ),
               ],
               if (leaveTime != null && leaveTime.isNotEmpty) ...[
                 Text(
                   "- $leaveTime",
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 10,
                     fontWeight: FontWeight.w600,
-                    color: Colors.grey.shade600,
+                    color: AppTheme.textSlateSecondary,
                   ),
                 ),
               ],
@@ -1264,7 +1987,7 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
           ),
         ),
 
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
 
         // Place details card with expandable details
         Expanded(
@@ -1273,17 +1996,18 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: Colors.grey.shade300),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.borderSlate),
               boxShadow: const [
                 BoxShadow(
-                  color: Colors.black12,
-                  blurRadius: 2,
+                  color: Color(0x060F172A),
+                  blurRadius: 4,
                   offset: Offset(0, 1),
                 ),
               ],
             ),
             child: InkWell(
+              borderRadius: BorderRadius.circular(14),
               onTap: () {
                 setState(() {
                   if (isExpanded) {
@@ -1305,13 +2029,13 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                           style: const TextStyle(
                             fontSize: 15,
                             fontWeight: FontWeight.bold,
-                            color: Colors.black87,
+                            color: AppTheme.textSlatePrimary,
                           ),
                         ),
                       ),
                       Icon(
                         isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
-                        color: Colors.grey.shade600,
+                        color: AppTheme.textSlateSecondary,
                         size: 20,
                       ),
                     ],
@@ -1322,9 +2046,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                     const SizedBox(height: 6),
                     Text(
                       description,
-                      style: TextStyle(
+                      style: const TextStyle(
                         fontSize: 13,
-                        color: Colors.grey.shade800,
+                        color: AppTheme.textSlateSecondary,
                         height: 1.35,
                       ),
                     ),
@@ -1339,20 +2063,20 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: Colors.teal.shade50,
-                          borderRadius: BorderRadius.circular(6),
-                          border: Border.all(color: Colors.teal.shade200),
+                          color: AppTheme.primaryTealLight,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: AppTheme.primaryTealLight),
                         ),
                         child: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            const Icon(Icons.schedule, size: 12, color: Colors.teal),
+                            const Icon(Icons.schedule, size: 12, color: AppTheme.primaryTeal),
                             const SizedBox(width: 4),
                             Text(
                               "Hours: $openingHours",
-                              style: TextStyle(
+                              style: const TextStyle(
                                 fontSize: 11,
-                                color: Colors.teal.shade900,
+                                color: AppTheme.primaryTealDark,
                                 fontWeight: FontWeight.w600,
                               ),
                             ),
@@ -1363,20 +2087,20 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                           decoration: BoxDecoration(
-                            color: Colors.amber.shade50,
-                            borderRadius: BorderRadius.circular(6),
-                            border: Border.all(color: Colors.amber.shade300),
+                            color: AppTheme.secondaryAmberLight,
+                            borderRadius: BorderRadius.circular(8),
+                            border: Border.all(color: AppTheme.secondaryAmberLight),
                           ),
                           child: Row(
                             mainAxisSize: MainAxisSize.min,
                             children: [
-                              const Icon(Icons.wb_sunny_outlined, size: 12, color: Colors.amber),
+                              const Icon(Icons.wb_sunny_outlined, size: 12, color: AppTheme.secondaryAmberDark),
                               const SizedBox(width: 4),
                               Text(
                                 "Best: $bestTime",
-                                style: TextStyle(
+                                style: const TextStyle(
                                   fontSize: 11,
-                                  color: Colors.amber.shade900,
+                                  color: AppTheme.secondaryAmberDark,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -1388,16 +2112,16 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
 
                   // Expandable Section
                   if (isExpanded) ...[
-                    const Divider(height: 18),
+                    const Divider(height: 18, color: AppTheme.borderSlateLight),
                     if (duration != null && duration.isNotEmpty)
                       Padding(
-                        padding: const EdgeInsets.only(bottom: 6),
+                        padding: const EdgeInsets.only(bottom: 8),
                         child: Text(
                           "Suggested Stay: $duration",
-                          style: TextStyle(
+                          style: const TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
-                            color: Colors.grey.shade700,
+                            color: AppTheme.textSlateSecondary,
                           ),
                         ),
                       ),
@@ -1411,6 +2135,9 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
                             foregroundColor: Colors.white,
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                             visualDensity: VisualDensity.compact,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(10),
+                            ),
                           ),
                           onPressed: () => _openMap(initialDay: dayNum),
                         ),
@@ -1426,104 +2153,362 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
     );
   }
 
-  Widget _buildTravelConnector(dynamic travelMap, Color dayColor) {
-    final Map<dynamic, dynamic> travel = travelMap is Map ? travelMap : {};
-    final distance = travel["distance"]?.toString();
-    final duration = travel["duration"]?.toString();
-    final mode = travel["mode"]?.toString();
-    final transitLine = travel["transitLine"]?.toString() ?? travel["details"]?.toString();
+  // ── Mode Color Helper (Walk: green, Bus/Train/Metro: blue, Auto/Cab: orange) ──
+  Color _getModeColor(String mode) {
+    switch (mode.toLowerCase()) {
+      case 'walk':
+        return AppTheme.modeWalk; // Green #16A34A
+      case 'bus':
+      case 'train':
+      case 'metro':
+      case 'transit':
+        return AppTheme.modeTransit; // Blue #2563EB
+      case 'auto':
+      case 'cab':
+      case 'taxi':
+      case 'drive':
+        return AppTheme.modeCab; // Orange #F97316
+      default:
+        return AppTheme.primaryTeal;
+    }
+  }
 
-    final transportIcon = _getTransportIcon(mode);
+  // ── Leg Row with Transport Chips & Step Details (Requirements 1, 2, 3, 4) ──
+
+  Widget _buildLegRow(ItineraryLeg leg, int legIndex, Color dayColor) {
+    // Ensure all 4 modes are present (Walk, Bus/Train, Auto, Cab) with Mumbai RTO rates and fallbacks
+    final options = _ensureCompleteOptions(leg);
+    final defaultIdx = _determineDefaultOptionIndex(options, leg.distanceMeters);
+    final currentOptionIdx = (leg.selectedOptionIndex >= 0 && leg.selectedOptionIndex < options.length)
+        ? leg.selectedOptionIndex
+        : defaultIdx;
+    final activeOption = options[currentOptionIdx];
+    final isExpanded = expandedLegIndices.contains('$legIndex');
+    final activeModeColor = _getModeColor(activeOption.mode);
 
     return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        // Timeline vertical bar
+        // Thin timeline vertical connector line (Requirement 4)
         SizedBox(
           width: 58,
           child: Center(
             child: Container(
-              width: 2,
-              height: 48,
-              color: dayColor.withValues(alpha: 0.35),
+              width: 2.0,
+              height: isExpanded ? 130 : 54,
+              decoration: BoxDecoration(
+                color: dayColor.withValues(alpha: 0.35),
+                borderRadius: BorderRadius.circular(1),
+              ),
             ),
           ),
         ),
 
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
 
-        // Leg connector pill
+        // Slim leg container between stop cards (Requirement 4)
         Expanded(
           child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+            margin: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
             decoration: BoxDecoration(
-              color: const Color(0xFFF1F3F5),
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: Colors.grey.shade300),
+              color: AppTheme.backgroundSlate,
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: AppTheme.borderSlate),
             ),
-            child: Row(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Icon(transportIcon, size: 16, color: dayColor),
-                const SizedBox(width: 8),
-                Expanded(
+                // Horizontal scrolling selectable chips for all transport modes
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
                   child: Row(
+                    children: List.generate(options.length, (optIdx) {
+                      final opt = options[optIdx];
+                      final isSelected = optIdx == currentOptionIdx;
+                      final modeColor = _getModeColor(opt.mode);
+                      final icon = _getTransportIcon(opt.mode);
+
+                      return Padding(
+                        padding: const EdgeInsets.only(right: 6),
+                        child: ChoiceChip(
+                          avatar: Icon(
+                            icon,
+                            size: 14,
+                            color: isSelected ? Colors.white : modeColor,
+                          ),
+                          label: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                opt.transitLine ?? opt.title,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: isSelected ? Colors.white : AppTheme.textSlatePrimary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                "• ${opt.duration}",
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: isSelected ? Colors.white70 : AppTheme.textSlateSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Text(
+                                "(${opt.distance})",
+                                style: TextStyle(
+                                  fontSize: 10,
+                                  color: isSelected ? Colors.white60 : AppTheme.textSlateSecondary,
+                                ),
+                              ),
+                              const SizedBox(width: 4),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? Colors.white.withValues(alpha: 0.25)
+                                      : modeColor.withValues(alpha: 0.12),
+                                  borderRadius: BorderRadius.circular(4),
+                                ),
+                                child: Text(
+                                  opt.cost,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    fontWeight: FontWeight.bold,
+                                    color: isSelected ? Colors.white : modeColor,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                          selected: isSelected,
+                          selectedColor: modeColor,
+                          backgroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                            side: BorderSide(
+                              color: isSelected ? modeColor : AppTheme.borderSlate,
+                            ),
+                          ),
+                          onSelected: (sel) {
+                            if (sel && legIndex < itineraryLegs.length) {
+                              setState(() {
+                                itineraryLegs[legIndex] =
+                                    leg.copyWithSelectedOption(optIdx);
+
+                                // Tapping a transit chip auto-expands step-by-step directions (Requirement 2)
+                                if (opt.mode == 'bus' ||
+                                    opt.mode == 'train' ||
+                                    opt.mode == 'metro' ||
+                                    opt.mode == 'transit') {
+                                  expandedLegIndices.add('$legIndex');
+                                }
+                              });
+                              _saveCurrentItinerary();
+                            }
+                          },
+                        ),
+                      );
+                    }),
+                  ),
+                ),
+
+                // Transit details badge: bus number / metro, boarding stop, alighting stop, departure time
+                if (activeOption.boardingStop != null || activeOption.departureTime != null) ...[
+                  const SizedBox(height: 4),
+                  Row(
                     children: [
-                      if (distance != null && distance.isNotEmpty)
-                        Text(
-                          distance,
+                      Icon(Icons.directions_transit, size: 12, color: activeModeColor),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          [
+                            if (activeOption.boardingStop != null) "Board at ${activeOption.boardingStop}",
+                            if (activeOption.alightingStop != null) "alight at ${activeOption.alightingStop}",
+                            if (activeOption.stopCount != null) "${activeOption.stopCount} stops",
+                            if (activeOption.departureTime != null) "Dep: ${activeOption.departureTime}",
+                          ].join(" • "),
                           style: const TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.black87,
-                          ),
-                        ),
-                      if (distance != null && duration != null)
-                        const Text(" • ", style: TextStyle(fontSize: 12)),
-                      if (duration != null && duration.isNotEmpty)
-                        Text(
-                          duration,
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: Colors.grey.shade700,
-                          ),
-                        ),
-                      if (mode != null && mode.isNotEmpty) ...[
-                        const Text(" via ", style: TextStyle(fontSize: 11)),
-                        Text(
-                          mode.toUpperCase(),
-                          style: TextStyle(
                             fontSize: 11,
-                            fontWeight: FontWeight.bold,
-                            color: dayColor,
+                            color: AppTheme.textSlateSecondary,
+                            fontWeight: FontWeight.w500,
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
-                      ],
+                      ),
+                    ],
+                  ),
+                ],
+
+                // Step-by-step transit details toggle & view (Requirement 2)
+                const SizedBox(height: 3),
+                InkWell(
+                  onTap: () {
+                    setState(() {
+                      if (isExpanded) {
+                        expandedLegIndices.remove('$legIndex');
+                      } else {
+                        expandedLegIndices.add('$legIndex');
+                      }
+                    });
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        isExpanded ? "Hide route steps" : "View step-by-step directions",
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: activeModeColor,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Icon(
+                        isExpanded ? Icons.keyboard_arrow_up : Icons.keyboard_arrow_down,
+                        size: 14,
+                        color: activeModeColor,
+                      ),
                     ],
                   ),
                 ),
-                if (transitLine != null && transitLine.isNotEmpty)
+
+                if (isExpanded) ...[
+                  const SizedBox(height: 6),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(4),
-                      border: Border.all(color: Colors.grey.shade300),
+                      borderRadius: BorderRadius.circular(10),
+                      border: Border.all(color: AppTheme.borderSlate),
                     ),
-                    child: Text(
-                      transitLine,
-                      style: TextStyle(
-                        fontSize: 10,
-                        fontWeight: FontWeight.w600,
-                        color: Colors.grey.shade800,
-                      ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _buildStepByStepWidgets(activeOption, leg),
                     ),
                   ),
+                ],
               ],
             ),
           ),
         ),
       ],
+    );
+  }
+
+  // Helper to build step-by-step directions (Requirement 2)
+  List<Widget> _buildStepByStepWidgets(TransportOption opt, ItineraryLeg leg) {
+    // If structured steps are provided from API or synthesis:
+    if (opt.steps.isNotEmpty) {
+      return opt.steps.map((st) {
+        final isWalk = st.type.toLowerCase().contains('walk');
+        final icon = isWalk ? Icons.directions_walk : _getTransportIcon(opt.mode);
+        final color = isWalk ? AppTheme.modeWalk : _getModeColor(opt.mode);
+
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 3),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(icon, size: 14, color: color),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  st.instruction,
+                  style: const TextStyle(fontSize: 11, color: AppTheme.textSlatePrimary),
+                ),
+              ),
+              if (st.duration != null && st.duration!.isNotEmpty) ...[
+                const SizedBox(width: 4),
+                Text(
+                  st.duration!,
+                  style: const TextStyle(fontSize: 10, color: AppTheme.textSlateSecondary),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList();
+    }
+
+    // Transit step-by-step synthesis if API returned transit details without sub-steps
+    if (opt.mode == 'bus' || opt.mode == 'train' || opt.mode == 'metro' || opt.mode == 'transit') {
+      final board = opt.boardingStop ?? 'Transit Stop';
+      final alight = opt.alightingStop ?? leg.to;
+      final line = opt.transitLine ?? 'Transit';
+
+      return [
+        _buildSynthesizedStepRow(
+          Icons.directions_walk,
+          AppTheme.modeWalk,
+          "Walk to $board",
+        ),
+        _buildSynthesizedStepRow(
+          _getTransportIcon(opt.mode),
+          AppTheme.modeTransit,
+          "Board $line at $board${opt.stopCount != null ? ' (${opt.stopCount} stops)' : ''}",
+        ),
+        _buildSynthesizedStepRow(
+          Icons.transfer_within_a_station,
+          AppTheme.modeTransit,
+          "Get off at $alight",
+        ),
+        _buildSynthesizedStepRow(
+          Icons.directions_walk,
+          AppTheme.modeWalk,
+          "Walk to destination: ${leg.to}",
+        ),
+      ];
+    }
+
+    if (opt.mode == 'walk') {
+      return [
+        _buildSynthesizedStepRow(
+          Icons.directions_walk,
+          AppTheme.modeWalk,
+          "Walk directly from ${leg.from} to ${leg.to} (${opt.distance}, ~${opt.duration})",
+        ),
+      ];
+    }
+
+    // Auto or Cab
+    return [
+      _buildSynthesizedStepRow(
+        opt.mode == 'auto' ? Icons.electric_rickshaw : Icons.local_taxi,
+        AppTheme.modeCab,
+        "Hail ${opt.title} to ${leg.to} (${opt.distance}, ~${opt.duration})",
+      ),
+      _buildSynthesizedStepRow(
+        Icons.info_outline,
+        AppTheme.textSlateSecondary,
+        "Fare based on Mumbai RTO meter rates (${opt.cost}). Pay directly or via meter.",
+      ),
+    ];
+  }
+
+  Widget _buildSynthesizedStepRow(IconData icon, Color color, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 2.5),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(fontSize: 11, color: AppTheme.textSlatePrimary),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -1533,15 +2518,22 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
       padding: const EdgeInsets.all(28),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: Colors.grey.shade200),
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: AppTheme.borderSlate),
+        boxShadow: const [
+          BoxShadow(
+            color: Color(0x080F172A),
+            blurRadius: 8,
+            offset: Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         children: [
-          Icon(
+          const Icon(
             Icons.explore_outlined,
             size: 56,
-            color: Colors.deepPurple.shade300,
+            color: AppTheme.primaryTeal,
           ),
           const SizedBox(height: 16),
           const Text(
@@ -1549,16 +2541,16 @@ class _ItineraryScreenState extends State<ItineraryScreen> {
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.bold,
-              color: Colors.black87,
+              color: AppTheme.textSlatePrimary,
             ),
           ),
           const SizedBox(height: 8),
-          Text(
-            "Confirm your starting point above, select your interests, and tap 'Generate Itinerary' to build a day-by-day plan clustered geographically with real transit times and opening hours.",
+          const Text(
+            "Search and confirm your starting point above, select your interests, and tap 'Generate Itinerary' to build a day-by-day plan clustered geographically with real transit options, opening hours, and routes.",
             textAlign: TextAlign.center,
             style: TextStyle(
               fontSize: 14,
-              color: Colors.grey.shade600,
+              color: AppTheme.textSlateSecondary,
               height: 1.4,
             ),
           ),

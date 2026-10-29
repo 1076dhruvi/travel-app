@@ -54,7 +54,7 @@ class _NotesScreenState extends State<NotesScreen> {
     TextEditingController(text: note?.content ?? '');
 
     int selectedColor =
-        note?.color ?? Colors.deepPurple.value;
+        note?.color ?? const Color(0xFF0F766E).value;
 
     bool reminderEnabled = note?.reminderTime != null;
 
@@ -102,7 +102,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         const SizedBox(width: 12),
 
                         ...[
-                          Colors.deepPurple,
+                          const Color(0xFF0F766E),
                           Colors.blue,
                           Colors.green,
                           Colors.orange,
@@ -160,7 +160,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(
                           Icons.calendar_today,
-                          color: Colors.deepPurple,
+                          color: Color(0xFF0F766E),
                         ),
                         title: Text(
                           reminderDateTime == null
@@ -197,7 +197,7 @@ class _NotesScreenState extends State<NotesScreen> {
                         contentPadding: EdgeInsets.zero,
                         leading: const Icon(
                           Icons.access_time,
-                          color: Colors.deepPurple,
+                          color: Color(0xFF0F766E),
                         ),
                         title: Text(
                           reminderDateTime == null
@@ -360,7 +360,6 @@ class _NotesScreenState extends State<NotesScreen> {
 
       appBar: AppBar(
         title: const Text("Notes"),
-        backgroundColor: Colors.deepPurple,
       ),
 
       body: notes.isEmpty
@@ -390,8 +389,8 @@ class _NotesScreenState extends State<NotesScreen> {
 
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showNoteDialog(),
-        backgroundColor: Colors.deepPurple,
-        child: const Icon(Icons.add),
+        backgroundColor: const Color(0xFF0F766E),
+        child: const Icon(Icons.add, color: Colors.white),
       ),
     );
   }

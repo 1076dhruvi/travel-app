@@ -37,11 +37,12 @@ class TripDashboard extends StatelessWidget {
       daysLeft = 0;
     }
 
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+
     return Scaffold(
       appBar: AppBar(
         title: Text(trip.title),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
       ),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
@@ -62,9 +63,9 @@ class TripDashboard extends StatelessWidget {
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15)),
-              elevation: 5,
+              elevation: 2,
               child: ListTile(
-                leading: const Icon(Icons.place, color: Colors.deepPurple),
+                leading: Icon(Icons.place, color: primaryColor),
                 title: Text(trip.location,
                     style: const TextStyle(fontSize: 16)),
               ),
@@ -76,9 +77,9 @@ class TripDashboard extends StatelessWidget {
             Card(
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(15)),
-              elevation: 5,
+              elevation: 2,
               child: ListTile(
-                leading: const Icon(Icons.date_range, color: Colors.deepPurple),
+                leading: Icon(Icons.date_range, color: primaryColor),
                 title: Text(trip.date,
                     style: const TextStyle(fontSize: 16)),
               ),
@@ -89,7 +90,7 @@ class TripDashboard extends StatelessWidget {
             // 📄 Documents
             Card(
               child: ListTile(
-                leading: const Icon(Icons.folder, color: Colors.deepPurple),
+                leading: Icon(Icons.folder, color: primaryColor),
                 title: const Text("Documents Vault"),
                 subtitle: const Text("Tap to open secure vault"),
                 onTap: () {
@@ -111,7 +112,7 @@ class TripDashboard extends StatelessWidget {
             // 📋 Checklist
             Card(
               child: ListTile(
-                leading: const Icon(Icons.checklist, color: Colors.deepPurple),
+                leading: Icon(Icons.checklist, color: primaryColor),
                 title: const Text("Packing Checklist"),
                 subtitle: const Text("Tap to open"),
                 onTap: () {
@@ -168,7 +169,7 @@ class TripDashboard extends StatelessWidget {
             // 🗺️ Itinerary
             Card(
               child: ListTile(
-                leading: const Icon(Icons.route, color: Colors.deepPurple),
+                leading: Icon(Icons.route, color: primaryColor),
                 title: const Text("Itinerary"),
                 subtitle: const Text("Generate your personalized itinerary"),
                 onTap: () {

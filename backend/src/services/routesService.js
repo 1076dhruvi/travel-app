@@ -59,6 +59,23 @@ export function haversineDistanceKm(lat1, lon1, lat2, lon2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
+import { calculateAutoFare, calculateCabFare } from "../config/fareConfig.js";
+
+function formatDepartureTime(isoString) {
+  if (!isoString) return null;
+  try {
+    const d = new Date(isoString);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString("en-IN", {
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true,
+      });
+    }
+  } catch (_) {}
+  return isoString;
+}
+
 /**
  * Queries Google Routes API v2 (with Google Directions API and Geoapify/OSRM fallback).
  * Returns real distance, duration, mode, transit line, and road-following polyline coordinates.
@@ -80,25 +97,19 @@ export async function computeLegRoute(origin, destination) {
     Number(destination.lon)
   );
 
-  // Preferred mode heuristic:
-  // Short distances (< 1.2 km): walk
-  // Medium/long: try transit first, then drive/cab
-  const isWalkingDistance = distKm < 1.2;
-
   const googleApiKey =
     process.env["GOOGLE_ROUTES_API_KEY"] ||
     process.env["GOOGLE_MAPS_API_KEY"] ||
     process.env["GOOGLE_API_KEY"] ||
     process.env["GEMINI_API_KEY"];
 
-  // 1. Try Google Routes API v2
-  if (googleApiKey) {
-    // Attempt transit first for non-walking distance, or walk for short distance
-    const modesToTry = isWalkingDistance
-      ? ["WALK", "DRIVE"]
-      : ["TRANSIT", "DRIVE", "WALK"];
+  const options = [];
+  let driveRouteData = null;
 
-    for (const travelMode of modesToTry) {
+  if (googleApiKey) {
+    const modes = ["DRIVE", "TRANSIT", "WALK"];
+
+    for (const travelMode of modes) {
       try {
         const response = await axios.post(
           "https://routes.googleapis.com/directions/v2:computeRoutes",
@@ -120,243 +131,414 @@ export async function computeLegRoute(origin, destination) {
               },
             },
             travelMode: travelMode,
-            computeAlternativeRoutes: false,
+            computeAlternativeRoutes: travelMode !== "WALK",
           },
           {
             headers: {
               "Content-Type": "application/json",
               "X-Goog-Api-Key": googleApiKey,
               "X-Goog-FieldMask":
-                "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.transitDetails",
+                "routes.duration,routes.distanceMeters,routes.polyline.encodedPolyline,routes.legs.steps.transitDetails,routes.legs.steps.navigationInstruction,routes.legs.steps.travelMode,routes.legs.steps.localizedValues,routes.travelAdvisory.transitFare,routes.description",
             },
-            timeout: 7000,
+            timeout: 6000,
           }
         );
 
-        const route = response.data?.routes?.[0];
-        if (route) {
+        const routesList = response.data?.routes || [];
+        for (const route of routesList) {
           const durationSec = parseInt((route.duration || "0s").replace("s", ""), 10) || 300;
           const distanceMeters = route.distanceMeters || Math.round(distKm * 1000);
           const polyline = decodePolyline(route.polyline?.encodedPolyline);
+          const distKmVal = distanceMeters / 1000;
+          const durationMins = Math.max(1, Math.round(durationSec / 60));
 
-          let finalMode = travelMode.toLowerCase();
-          let transitLine = null;
+          if (travelMode === "DRIVE") {
+            driveRouteData = {
+              durationSec,
+              durationMins,
+              distanceMeters,
+              distKmVal,
+              polyline,
+            };
 
-          if (travelMode === "TRANSIT") {
-            finalMode = "bus"; // default transit label
-            // Extract transit line details from steps
+            const autoFare = calculateAutoFare(distKmVal, durationMins);
+            const cabFare = calculateCabFare(distKmVal, durationMins);
+
+            options.push({
+              mode: "auto",
+              title: "Auto",
+              duration: `${durationMins} min`,
+              durationMinutes: durationMins,
+              durationSeconds: durationSec,
+              distance: `${distKmVal.toFixed(1)} km`,
+              distanceMeters: distanceMeters,
+              cost: autoFare.label,
+              polyline: polyline.length > 0 ? polyline : [
+                [Number(origin.lat), Number(origin.lon)],
+                [Number(destination.lat), Number(destination.lon)],
+              ],
+              steps: [
+                {
+                  type: "drive",
+                  instruction: `Auto-rickshaw ride to ${destination.name || "destination"} (${distKmVal.toFixed(1)} km)`,
+                  duration: `${durationMins} min`,
+                  distance: `${distKmVal.toFixed(1)} km`,
+                },
+              ],
+            });
+
+            options.push({
+              mode: "cab",
+              title: "Cab",
+              duration: `${durationMins} min`,
+              durationMinutes: durationMins,
+              durationSeconds: durationSec,
+              distance: `${distKmVal.toFixed(1)} km`,
+              distanceMeters: distanceMeters,
+              cost: cabFare.label,
+              polyline: polyline.length > 0 ? polyline : [
+                [Number(origin.lat), Number(origin.lon)],
+                [Number(destination.lat), Number(destination.lon)],
+              ],
+              steps: [
+                {
+                  type: "drive",
+                  instruction: `Cab / Taxi ride to ${destination.name || "destination"} (${distKmVal.toFixed(1)} km)`,
+                  duration: `${durationMins} min`,
+                  distance: `${distKmVal.toFixed(1)} km`,
+                },
+              ],
+            });
+          } else if (travelMode === "TRANSIT") {
+            let transitLine = null;
+            let vehicleType = "bus";
+            let boardingStop = null;
+            let alightingStop = null;
+            let stopCount = 0;
+            let departureTime = null;
+            const detailedSteps = [];
+
             const steps = route.legs?.[0]?.steps || [];
             for (const step of steps) {
               const td = step.transitDetails;
               if (td) {
                 const line = td.transitLine;
-                const vehicleType = line?.vehicle?.type || "";
-                if (vehicleType.toLowerCase().includes("train") || vehicleType.toLowerCase().includes("rail") || vehicleType.toLowerCase().includes("subway") || vehicleType.toLowerCase().includes("metro")) {
-                  finalMode = "train";
+                const vType = (line?.vehicle?.type || "").toLowerCase();
+                if (vType.includes("train") || vType.includes("rail") || vType.includes("subway") || vType.includes("metro")) {
+                  vehicleType = "train";
                 } else {
-                  finalMode = "bus";
+                  vehicleType = "bus";
                 }
 
-                const lineName = line?.nameShort || line?.name || td.headsign;
-                if (lineName) {
-                  transitLine = lineName;
+                const shortName = line?.nameShort || line?.name || td.headsign || "";
+                if (shortName) {
+                  if (vehicleType === "bus" && !shortName.toLowerCase().startsWith("bus")) {
+                    transitLine = `Bus ${shortName}`;
+                  } else if (vehicleType === "train" && !shortName.toLowerCase().includes("line") && !shortName.toLowerCase().includes("metro")) {
+                    transitLine = `${shortName} Line`;
+                  } else {
+                    transitLine = shortName;
+                  }
                 }
+
+                boardingStop = td.stopDetails?.departureStop?.name || boardingStop;
+                alightingStop = td.stopDetails?.arrivalStop?.name || alightingStop;
+                stopCount += td.stopCount || 1;
+                departureTime = formatDepartureTime(
+                  td.stopDetails?.departureTime ||
+                  step.localizedValues?.departureTime?.time?.text
+                ) || departureTime;
+
+                detailedSteps.push({
+                  type: "transit",
+                  instruction: `Board ${transitLine || "transit"} at ${boardingStop || "stop"} towards ${td.headsign || alightingStop || "destination"} (${td.stopCount || 1} stops)`,
+                  lineName: transitLine,
+                  boardingStop: boardingStop,
+                  alightingStop: alightingStop,
+                  stopCount: td.stopCount || 1,
+                  departureTime: departureTime,
+                  duration: step.localizedValues?.staticDuration?.text || `${Math.round(durationSec / 60)} min`,
+                });
+
+                if (alightingStop) {
+                  detailedSteps.push({
+                    type: "transit",
+                    instruction: `Get off at ${alightingStop}`,
+                    boardingStop: boardingStop,
+                    alightingStop: alightingStop,
+                  });
+                }
+              } else if (step.travelMode === "WALK") {
+                detailedSteps.push({
+                  type: "walk",
+                  instruction: `Walk ${step.localizedValues?.distance?.text || "to next stop"} (${step.localizedValues?.staticDuration?.text || "few mins"})`,
+                  duration: step.localizedValues?.staticDuration?.text || "2 min",
+                  distance: step.localizedValues?.distance?.text || "",
+                });
               }
             }
 
             if (!transitLine) {
               transitLine = "check locally";
             }
-          } else if (travelMode === "DRIVE") {
-            finalMode = "cab";
-          } else if (travelMode === "WALK") {
-            finalMode = "walk";
-          }
 
-          const result = {
-            from: origin.name || "Start",
-            to: destination.name || "Destination",
-            distance: `${(distanceMeters / 1000).toFixed(1)} km`,
-            distanceMeters: distanceMeters,
-            duration: `${Math.max(1, Math.round(durationSec / 60))} min`,
-            durationMinutes: Math.max(1, Math.round(durationSec / 60)),
-            durationSeconds: durationSec,
-            mode: finalMode,
-            transitLine: transitLine,
-            polyline: polyline.length > 0 ? polyline : [
-              [Number(origin.lat), Number(origin.lon)],
-              [Number(destination.lat), Number(destination.lon)],
-            ],
-          };
-
-          routesCache.set(cacheKey, result);
-          return result;
-        }
-      } catch (routesErr) {
-        // Try next mode or fall back
-      }
-    }
-
-    // 2. Try Google Directions API legacy
-    try {
-      const modeParam = isWalkingDistance ? "walking" : "transit";
-      const directionsRes = await axios.get(
-        "https://maps.googleapis.com/maps/api/directions/json",
-        {
-          params: {
-            origin: `${origin.lat},${origin.lon}`,
-            destination: `${destination.lat},${destination.lon}`,
-            mode: modeParam,
-            key: googleApiKey,
-          },
-          timeout: 6000,
-        }
-      );
-
-      const dRoute = directionsRes.data?.routes?.[0];
-      if (dRoute && dRoute.legs?.[0]) {
-        const leg = dRoute.legs[0];
-        const polyline = decodePolyline(dRoute.overview_polyline?.points);
-
-        let finalMode = isWalkingDistance ? "walk" : "bus";
-        let transitLine = null;
-
-        const steps = leg.steps || [];
-        for (const s of steps) {
-          if (s.transit_details) {
-            const line = s.transit_details.line;
-            const vType = line?.vehicle?.type || "";
-            if (vType.toLowerCase().includes("train") || vType.toLowerCase().includes("subway")) {
-              finalMode = "train";
+            // Fare: only if the API returns one, otherwise "check locally"
+            let fareCost = "check locally";
+            if (route.travelAdvisory?.transitFare?.units != null) {
+              fareCost = `₹${route.travelAdvisory.transitFare.units}`;
             }
-            transitLine = line?.short_name || line?.name || "check locally";
+
+            options.push({
+              mode: vehicleType,
+              title: transitLine,
+              duration: `${durationMins} min`,
+              durationMinutes: durationMins,
+              durationSeconds: durationSec,
+              distance: `${distKmVal.toFixed(1)} km`,
+              distanceMeters: distanceMeters,
+              cost: fareCost,
+              transitLine: transitLine,
+              boardingStop: boardingStop,
+              alightingStop: alightingStop,
+              stopCount: stopCount > 0 ? stopCount : null,
+              departureTime: departureTime,
+              polyline: polyline.length > 0 ? polyline : [
+                [Number(origin.lat), Number(origin.lon)],
+                [Number(destination.lat), Number(destination.lon)],
+              ],
+              steps: detailedSteps.length > 0 ? detailedSteps : [
+                {
+                  type: "transit",
+                  instruction: `Take ${transitLine} from ${boardingStop || origin.name || "stop"} to ${alightingStop || destination.name || "destination"}`,
+                  lineName: transitLine,
+                  boardingStop: boardingStop,
+                  alightingStop: alightingStop,
+                  stopCount: stopCount > 0 ? stopCount : 3,
+                  departureTime: departureTime,
+                },
+              ],
+            });
+          } else if (travelMode === "WALK") {
+            options.push({
+              mode: "walk",
+              title: "Walk",
+              duration: `${durationMins} min`,
+              durationMinutes: durationMins,
+              durationSeconds: durationSec,
+              distance: `${distKmVal.toFixed(1)} km`,
+              distanceMeters: distanceMeters,
+              cost: "Free",
+              polyline: polyline.length > 0 ? polyline : [
+                [Number(origin.lat), Number(origin.lon)],
+                [Number(destination.lat), Number(destination.lon)],
+              ],
+              steps: [
+                {
+                  type: "walk",
+                  instruction: `Walk to ${destination.name || "destination"} (${distKmVal.toFixed(1)} km)`,
+                  duration: `${durationMins} min`,
+                  distance: `${distKmVal.toFixed(1)} km`,
+                },
+              ],
+            });
           }
         }
-
-        const result = {
-          from: origin.name || "Start",
-          to: destination.name || "Destination",
-          distance: leg.distance?.text || `${(leg.distance?.value / 1000).toFixed(1)} km`,
-          distanceMeters: leg.distance?.value || Math.round(distKm * 1000),
-          duration: leg.duration?.text || `${Math.round((leg.duration?.value || 300) / 60)} min`,
-          durationMinutes: Math.round((leg.duration?.value || 300) / 60),
-          durationSeconds: leg.duration?.value || 300,
-          mode: finalMode,
-          transitLine: transitLine,
-          polyline: polyline,
-        };
-
-        routesCache.set(cacheKey, result);
-        return result;
-      }
-    } catch (dirErr) {
-      // Continue to Geoapify / OSRM fallback
+      } catch (_) {}
     }
   }
 
-  // 3. Fallback to Geoapify Routing API
-  const geoapifyKey = process.env["GEOAPIFY_API_KEY"];
-  if (geoapifyKey) {
-    try {
-      const geoMode = isWalkingDistance ? "walk" : "drive";
-      const geoRes = await axios.get("https://api.geoapify.com/v1/routing", {
-        params: {
-          waypoints: `${origin.lat},${origin.lon}|${destination.lat},${destination.lon}`,
-          mode: geoMode,
-          apiKey: geoapifyKey,
+  // Ensure Transit option exists; if no transit data from API, show "check locally" instead of hiding it
+  const hasTransit = options.some((o) => o.mode === "bus" || o.mode === "train");
+  if (!hasTransit) {
+    const transitMins = Math.max(8, Math.round(distKm * 3.5 + 5));
+    options.push({
+      mode: "bus",
+      title: "Transit",
+      duration: `${transitMins} min`,
+      durationMinutes: transitMins,
+      durationSeconds: transitMins * 60,
+      distance: `${distKm.toFixed(1)} km`,
+      distanceMeters: Math.round(distKm * 1000),
+      cost: "check locally",
+      transitLine: "check locally",
+      boardingStop: null,
+      alightingStop: null,
+      stopCount: null,
+      departureTime: null,
+      polyline: [
+        [Number(origin.lat), Number(origin.lon)],
+        [Number(destination.lat), Number(destination.lon)],
+      ],
+      steps: [
+        {
+          type: "transit",
+          instruction: `Local bus/transit to ${destination.name || "destination"} (check locally)`,
+          lineName: "check locally",
         },
-        timeout: 6000,
-      });
-
-      const feature = geoRes.data?.features?.[0];
-      if (feature) {
-        const { distance, time } = feature.properties;
-        const coordinates = feature.geometry?.coordinates?.[0] || [];
-        // GeoJSON is [lon, lat], convert to [lat, lon]
-        const polyline = coordinates.map((c) => [c[1], c[0]]);
-
-        const finalMode = isWalkingDistance ? "walk" : (distKm > 4 ? "bus" : "cab");
-
-        const result = {
-          from: origin.name || "Start",
-          to: destination.name || "Destination",
-          distance: `${(distance / 1000).toFixed(1)} km`,
-          distanceMeters: distance,
-          duration: `${Math.max(1, Math.round(time / 60))} min`,
-          durationMinutes: Math.max(1, Math.round(time / 60)),
-          durationSeconds: time,
-          mode: finalMode,
-          transitLine: finalMode === "bus" ? "check locally" : null,
-          polyline: polyline.length > 0 ? polyline : [
-            [Number(origin.lat), Number(origin.lon)],
-            [Number(destination.lat), Number(destination.lon)],
-          ],
-        };
-
-        routesCache.set(cacheKey, result);
-        return result;
-      }
-    } catch (geoErr) {
-      // Continue to OSRM fallback
-    }
+      ],
+    });
   }
 
-  // 4. Open-source OSRM Fallback (Road-following geometry)
-  try {
-    const osrmMode = isWalkingDistance ? "foot" : "car";
-    const osrmRes = await axios.get(
-      `https://router.project-osrm.org/route/v1/${osrmMode}/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=full&geometries=geojson`,
-      { timeout: 6000 }
-    );
+  // Ensure Auto and Cab options exist (fallback via OSRM if DRIVE wasn't returned by Google)
+  const hasAuto = options.some((o) => o.mode === "auto");
+  const hasCab = options.some((o) => o.mode === "cab");
 
-    const route = osrmRes.data?.routes?.[0];
-    if (route) {
-      const coords = route.geometry?.coordinates || [];
-      const polyline = coords.map((c) => [c[1], c[0]]); // [lat, lon]
-      const durationSec = Math.round(route.duration);
-      const distMeters = Math.round(route.distance);
-
-      const finalMode = isWalkingDistance ? "walk" : (distKm > 5 ? "bus" : "cab");
-
-      const result = {
-        from: origin.name || "Start",
-        to: destination.name || "Destination",
-        distance: `${(distMeters / 1000).toFixed(1)} km`,
-        distanceMeters: distMeters,
-        duration: `${Math.max(1, Math.round(durationSec / 60))} min`,
-        durationMinutes: Math.max(1, Math.round(durationSec / 60)),
-        durationSeconds: durationSec,
-        mode: finalMode,
-        transitLine: finalMode === "bus" ? "check locally" : null,
-        polyline: polyline,
-      };
-
-      routesCache.set(cacheKey, result);
-      return result;
-    }
-  } catch (osrmErr) {
-    // Final basic calculation
-  }
-
-  // 5. Final geometric fallback
-  const approxSpeedKmH = isWalkingDistance ? 4.5 : 25; // km/h
-  const travelMinutes = Math.max(3, Math.round((distKm / approxSpeedKmH) * 60));
-  const fallbackResult = {
-    from: origin.name || "Start",
-    to: destination.name || "Destination",
-    distance: `${distKm.toFixed(1)} km`,
-    distanceMeters: Math.round(distKm * 1000),
-    duration: `${travelMinutes} min`,
-    durationMinutes: travelMinutes,
-    durationSeconds: travelMinutes * 60,
-    mode: isWalkingDistance ? "walk" : "cab",
-    transitLine: null,
-    polyline: [
+  if (!hasAuto || !hasCab) {
+    let driveSec = Math.max(120, Math.round(distKm * 180));
+    let driveMeters = Math.round(distKm * 1000);
+    let drivePolyline = [
       [Number(origin.lat), Number(origin.lon)],
       [Number(destination.lat), Number(destination.lon)],
-    ],
+    ];
+
+    try {
+      const osrmCar = await axios.get(
+        `https://router.project-osrm.org/route/v1/car/${origin.lon},${origin.lat};${destination.lon},${destination.lat}?overview=full&geometries=geojson`,
+        { timeout: 4000 }
+      );
+      const carRoute = osrmCar.data?.routes?.[0];
+      if (carRoute) {
+        driveMeters = Math.round(carRoute.distance);
+        driveSec = Math.round(carRoute.duration);
+        drivePolyline = (carRoute.geometry?.coordinates || []).map((c) => [c[1], c[0]]);
+      }
+    } catch (_) {}
+
+    const carKm = driveMeters / 1000;
+    const carMins = Math.max(1, Math.round(driveSec / 60));
+    const autoFare = calculateAutoFare(carKm, carMins);
+    const cabFare = calculateCabFare(carKm, carMins);
+
+    if (!hasAuto) {
+      options.push({
+        mode: "auto",
+        title: "Auto",
+        duration: `${carMins} min`,
+        durationMinutes: carMins,
+        durationSeconds: driveSec,
+        distance: `${carKm.toFixed(1)} km`,
+        distanceMeters: driveMeters,
+        cost: autoFare.label,
+        polyline: drivePolyline,
+        steps: [
+          {
+            type: "drive",
+            instruction: `Auto-rickshaw via road (${carKm.toFixed(1)} km)`,
+            duration: `${carMins} min`,
+            distance: `${carKm.toFixed(1)} km`,
+          },
+        ],
+      });
+    }
+
+    if (!hasCab) {
+      options.push({
+        mode: "cab",
+        title: "Cab",
+        duration: `${carMins} min`,
+        durationMinutes: carMins,
+        durationSeconds: driveSec,
+        distance: `${carKm.toFixed(1)} km`,
+        distanceMeters: driveMeters,
+        cost: cabFare.label,
+        polyline: drivePolyline,
+        steps: [
+          {
+            type: "drive",
+            instruction: `Drive or cab via road (${carKm.toFixed(1)} km)`,
+            duration: `${carMins} min`,
+            distance: `${carKm.toFixed(1)} km`,
+          },
+        ],
+      });
+    }
+  }
+
+  // Ensure Walk option exists
+  const hasWalk = options.some((o) => o.mode === "walk");
+  if (!hasWalk) {
+    const walkMins = Math.max(2, Math.round((distKm / 4.5) * 60));
+    options.push({
+      mode: "walk",
+      title: "Walk",
+      duration: `${walkMins} min`,
+      durationMinutes: walkMins,
+      durationSeconds: walkMins * 60,
+      distance: `${distKm.toFixed(1)} km`,
+      distanceMeters: Math.round(distKm * 1000),
+      cost: "Free",
+      polyline: [
+        [Number(origin.lat), Number(origin.lon)],
+        [Number(destination.lat), Number(destination.lon)],
+      ],
+      steps: [
+        {
+          type: "walk",
+          instruction: `Walk to ${destination.name || "destination"} (${distKm.toFixed(1)} km)`,
+          duration: `${walkMins} min`,
+          distance: `${distKm.toFixed(1)} km`,
+        },
+      ],
+    });
+  }
+
+  // Deduplicate options if any identical modes exist with duplicate titles
+  const uniqueOptions = [];
+  const seenKeys = new Set();
+  for (const opt of options) {
+    const key = `${opt.mode}_${opt.title}_${opt.cost}`;
+    if (!seenKeys.has(key)) {
+      seenKeys.add(key);
+      uniqueOptions.push(opt);
+    }
+  }
+
+  // Default selection: walk if under 1 km (< 1000 m), otherwise the fastest option.
+  let selectedIdx = 0;
+  if (distKm < 1.0) {
+    const walkIdx = uniqueOptions.findIndex((o) => o.mode === "walk");
+    if (walkIdx !== -1) {
+      selectedIdx = walkIdx;
+    } else {
+      selectedIdx = 0;
+    }
+  } else {
+    // Pick the fastest option by durationSeconds
+    let minSec = Infinity;
+    let fastestIdx = 0;
+    for (let i = 0; i < uniqueOptions.length; i++) {
+      const sec = uniqueOptions[i].durationSeconds || 999999;
+      if (sec < minSec) {
+        minSec = sec;
+        fastestIdx = i;
+      }
+    }
+    selectedIdx = fastestIdx;
+  }
+
+  const selectedOption = uniqueOptions[selectedIdx] || uniqueOptions[0];
+
+  const finalResult = {
+    from: origin.name || "Start",
+    to: destination.name || "Destination",
+    distance: selectedOption.distance,
+    distanceMeters: selectedOption.distanceMeters,
+    duration: selectedOption.duration,
+    durationMinutes: selectedOption.durationMinutes,
+    durationSeconds: selectedOption.durationSeconds,
+    mode: selectedOption.mode,
+    transitLine: selectedOption.transitLine,
+    cost: selectedOption.cost,
+    boardingStop: selectedOption.boardingStop,
+    alightingStop: selectedOption.alightingStop,
+    stopCount: selectedOption.stopCount,
+    departureTime: selectedOption.departureTime,
+    polyline: selectedOption.polyline,
+    options: uniqueOptions,
+    selectedOptionIndex: selectedIdx,
+    steps: selectedOption.steps || [],
   };
 
-  routesCache.set(cacheKey, fallbackResult);
-  return fallbackResult;
+  routesCache.set(cacheKey, finalResult);
+  return finalResult;
 }
