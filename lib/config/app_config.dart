@@ -52,11 +52,11 @@ class AppConfig {
     }
 
     // Physical Android device (forwarded via adb reverse) or desktop/web:
-    return 'http://127.0.0.1:3000';
+    return 'http://192.168.1.37:3000';
   }
 
   /// Base URL for API endpoints:
-  /// - Physical device: `http://127.0.0.1:3000/api`
+  /// - Physical device: `http://192.168.1.37:3000/api`
   /// - Android emulator: `http://10.0.2.2:3000/api`
   static String get apiBaseUrl => '$backendUrl/api';
 
@@ -64,12 +64,12 @@ class AppConfig {
   static String get healthUrl => '$backendUrl/api/health';
 
   /// Helper for itinerary endpoint:
-  /// - Physical device: `http://127.0.0.1:3000/api/itinerary/generate`
+  /// - Physical device: `http://192.168.1.37:3000/api/itinerary/generate`
   /// - Android emulator: `http://10.0.2.2:3000/api/itinerary/generate`
   static String get itineraryGenerateUrl => '$apiBaseUrl/itinerary/generate';
 
   /// Helper for routing endpoint:
-  /// - Physical device: `http://127.0.0.1:3000/api/routing/optimize`
+  /// - Physical device: `http://192.168.1.37:3000/api/routing/optimize`
   /// - Android emulator: `http://10.0.2.2:3000/api/routing/optimize`
   static String get routingOptimizeUrl => '$apiBaseUrl/routing/optimize';
 }

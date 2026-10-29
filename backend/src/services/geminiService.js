@@ -17,7 +17,7 @@ export async function generateItineraryPlan(destination, days = 2, interests = [
   let model;
   try {
     model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash-lite",
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.2,
@@ -56,7 +56,7 @@ TRIP-WIDE PLACE UNIQUENESS & INTEGRITY (MANDATORY):
 3. Return real, verifiable, distinct place names found on Google Maps.
 4. Cluster places strictly by proximity so each day covers ONE distinct geographic neighbourhood or area (within ~5 km radius).
 5. NO area or neighbourhood may repeat on another day.
-6. Include 3 to 4 real tourist attractions per day.
+6. Include 6 to 7 real tourist attractions per day.
 7. Do NOT include generic activities like "Food Tour", "Shopping Walk", "Sunset Cruise".
 8. Do NOT fabricate arrival/leave times, travel distances, durations, or opening hours. External APIs will fetch them.
 
