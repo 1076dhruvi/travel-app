@@ -19,7 +19,6 @@ class TripDashboard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-
     // ✅ Days Left Logic
     int daysLeft = 0;
 
@@ -37,23 +36,20 @@ class TripDashboard extends StatelessWidget {
       daysLeft = 0;
     }
 
+    final theme = Theme.of(context);
+    final primaryColor = theme.colorScheme.primary;
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text(trip.title),
-        backgroundColor: Colors.deepPurple,
-        foregroundColor: Colors.white,
-      ),
+      appBar: AppBar(title: Text(trip.title)),
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-
             // 🔥 Days Left
             Text(
               "Days left: $daysLeft",
-              style: const TextStyle(
-                  fontSize: 18, fontWeight: FontWeight.bold),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
 
             const SizedBox(height: 15),
@@ -61,12 +57,15 @@ class TripDashboard extends StatelessWidget {
             // 📍 Location Card
             Card(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15)),
-              elevation: 5,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              elevation: 2,
               child: ListTile(
-                leading: const Icon(Icons.place, color: Colors.deepPurple),
-                title: Text(trip.location,
-                    style: const TextStyle(fontSize: 16)),
+                leading: Icon(Icons.place, color: primaryColor),
+                title: Text(
+                  trip.location,
+                  style: const TextStyle(fontSize: 16),
+                ),
               ),
             ),
 
@@ -75,12 +74,12 @@ class TripDashboard extends StatelessWidget {
             // 📅 Date Card
             Card(
               shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(15)),
-              elevation: 5,
+                borderRadius: BorderRadius.circular(15),
+              ),
+              elevation: 2,
               child: ListTile(
-                leading: const Icon(Icons.date_range, color: Colors.deepPurple),
-                title: Text(trip.date,
-                    style: const TextStyle(fontSize: 16)),
+                leading: Icon(Icons.date_range, color: primaryColor),
+                title: Text(trip.date, style: const TextStyle(fontSize: 16)),
               ),
             ),
 
@@ -89,7 +88,7 @@ class TripDashboard extends StatelessWidget {
             // 📄 Documents
             Card(
               child: ListTile(
-                leading: const Icon(Icons.folder, color: Colors.deepPurple),
+                leading: Icon(Icons.folder, color: primaryColor),
                 title: const Text("Documents Vault"),
                 subtitle: const Text("Tap to open secure vault"),
                 onTap: () {
@@ -111,7 +110,7 @@ class TripDashboard extends StatelessWidget {
             // 📋 Checklist
             Card(
               child: ListTile(
-                leading: const Icon(Icons.checklist, color: Colors.deepPurple),
+                leading: Icon(Icons.checklist, color: primaryColor),
                 title: const Text("Packing Checklist"),
                 subtitle: const Text("Tap to open"),
                 onTap: () {
@@ -168,7 +167,7 @@ class TripDashboard extends StatelessWidget {
             // 🗺️ Itinerary
             Card(
               child: ListTile(
-                leading: const Icon(Icons.route, color: Colors.deepPurple),
+                leading: Icon(Icons.route, color: primaryColor),
                 title: const Text("Itinerary"),
                 subtitle: const Text("Generate your personalized itinerary"),
                 onTap: () {
@@ -195,6 +194,8 @@ class TripDashboard extends StatelessWidget {
                   final savedJson = await dbService.getItinerary(trip.id!);
 
                   List<ItineraryPlace> mapPlaces = [];
+                  List<ItineraryLeg> mapLegs = [];
+                  StartPoint? mapStartPoint;
 
                   if (savedJson != null) {
                     try {
@@ -212,6 +213,16 @@ class TripDashboard extends StatelessWidget {
                           );
                         }
                       }
+                      if (parsed["legs"] != null) {
+                        for (var l in parsed["legs"]) {
+                          mapLegs.add(ItineraryLeg.fromMap(l));
+                        }
+                      }
+                      if (parsed["startPoint"] != null) {
+                        mapStartPoint = StartPoint.fromMap(
+                          parsed["startPoint"],
+                        );
+                      }
                     } catch (e) {
                       debugPrint("Error parsing offline map data: $e");
                     }
@@ -219,7 +230,9 @@ class TripDashboard extends StatelessWidget {
 
                   // Fallback: If no itinerary was generated yet, fetch single location center
                   if (mapPlaces.isEmpty) {
-                    final coordinates = await GeocodingService().getCoordinates(trip.location);
+                    final coordinates = await GeocodingService().getCoordinates(
+                      trip.location,
+                    );
                     if (coordinates != null) {
                       mapPlaces.add(
                         ItineraryPlace(
@@ -240,6 +253,8 @@ class TripDashboard extends StatelessWidget {
                         builder: (_) => MapScreen(
                           title: "${trip.location} Offline Map",
                           places: mapPlaces,
+                          legs: mapLegs.isNotEmpty ? mapLegs : null,
+                          startPoint: mapStartPoint,
                         ),
                       ),
                     );
@@ -259,10 +274,7 @@ class TripDashboard extends StatelessWidget {
             // 📝 Notes
             Card(
               child: ListTile(
-                leading: const Icon(
-                  Icons.note,
-                  color: Colors.orange,
-                ),
+                leading: const Icon(Icons.note, color: Colors.orange),
                 title: const Text("Notes"),
                 subtitle: const Text("Add and manage your trip notes"),
                 trailing: const Icon(Icons.arrow_forward_ios, size: 16),
@@ -270,9 +282,7 @@ class TripDashboard extends StatelessWidget {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (context) => NotesScreen(
-                        tripId: trip.id!,
-                      ),
+                      builder: (context) => NotesScreen(tripId: trip.id!),
                     ),
                   );
                 },
@@ -290,8 +300,9 @@ class TripDashboard extends StatelessWidget {
                   icon: const Icon(Icons.edit),
                   label: const Text("Edit"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.orangeAccent,
-                      foregroundColor: Colors.white),
+                    backgroundColor: Colors.orangeAccent,
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: () {
                     Navigator.push(
                       context,
@@ -311,8 +322,9 @@ class TripDashboard extends StatelessWidget {
                   icon: const Icon(Icons.delete),
                   label: const Text("Delete"),
                   style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.redAccent,
-                      foregroundColor: Colors.white),
+                    backgroundColor: Colors.redAccent,
+                    foregroundColor: Colors.white,
+                  ),
                   onPressed: () async {
                     if (trip.id == null) return;
 

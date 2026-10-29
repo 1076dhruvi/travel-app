@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/database_service.dart';
+import '../theme/app_theme.dart';
 
 class BudgetScreen extends StatefulWidget {
   final int tripId;
@@ -24,13 +25,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   String selectedCategory = "Food";
   List<Map<String, dynamic>> expenses = [];
 
-  List<String> categories = [
-    "Food",
-    "Transport",
-    "Stay",
-    "Shopping",
-    "Other"
-  ];
+  List<String> categories = ["Food", "Transport", "Stay", "Shopping", "Other"];
 
   @override
   void initState() {
@@ -55,8 +50,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     });
   }
 
-  double get spent =>
-      expenses.fold(0, (sum, e) => sum + (e['amount'] ?? 0));
+  double get spent => expenses.fold(0, (sum, e) => sum + (e['amount'] ?? 0));
 
   double get remaining => totalBudget - spent;
 
@@ -86,8 +80,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
     String message = "Expense added successfully";
 
-    double expectedDaily =
-        totalBudget / (tripDays == 0 ? 1 : tripDays);
+    double expectedDaily = totalBudget / (tripDays == 0 ? 1 : tripDays);
 
     if (amount > expectedDaily) {
       message = "⚠ High expense compared to planned budget";
@@ -105,8 +98,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor:
-        message.contains("🚨") ? Colors.red : Colors.black87,
+        backgroundColor: message.contains("🚨") ? Colors.red : Colors.black87,
       ),
     );
   }
@@ -114,11 +106,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   void deleteExpense(int id) async {
     final dbClient = await db.database;
 
-    await dbClient.delete(
-      'expenses',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await dbClient.delete('expenses', where: 'id = ?', whereArgs: [id]);
 
     loadData();
   }
@@ -130,18 +118,13 @@ class _BudgetScreenState extends State<BudgetScreen> {
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F6FA),
-      appBar: AppBar(
-        title: const Text("Budget Dashboard"),
-        backgroundColor: Colors.deepPurple,
-        elevation: 0,
-      ),
+      appBar: AppBar(title: const Text("Budget Dashboard"), elevation: 0),
 
       body: SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-
             // ================= BUDGET OVERVIEW =================
             _card(
               child: Container(
@@ -153,13 +136,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                         ? [Colors.redAccent, Colors.red]
                         : warning
                         ? [Colors.orange, Colors.deepOrange]
-                        : [Colors.deepPurple, Colors.purple],
+                        : [AppTheme.primaryViolet, AppTheme.primaryVioletDark],
                   ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     const Text(
                       "Budget Overview",
                       style: TextStyle(color: Colors.white70),
@@ -181,13 +163,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     ClipRRect(
                       borderRadius: BorderRadius.circular(10),
                       child: LinearProgressIndicator(
-                        value: totalBudget == 0
-                            ? 0
-                            : spent / totalBudget,
+                        value: totalBudget == 0 ? 0 : spent / totalBudget,
                         minHeight: 10,
                         backgroundColor: Colors.white24,
-                        valueColor:
-                        const AlwaysStoppedAnimation(Colors.white),
+                        valueColor: const AlwaysStoppedAnimation(Colors.white),
                       ),
                     ),
 
@@ -221,7 +200,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   const SizedBox(height: 16),
                   ElevatedButton(
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.deepPurple,
+                      backgroundColor: AppTheme.primaryViolet,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -257,14 +236,10 @@ class _BudgetScreenState extends State<BudgetScreen> {
                     value: selectedCategory,
                     decoration: _input("Category"),
                     items: categories
-                        .map((e) => DropdownMenuItem(
-                      value: e,
-                      child: Text(e),
-                    ))
+                        .map((e) => DropdownMenuItem(value: e, child: Text(e)))
                         .toList(),
                     onChanged: (v) {
-                      setState(() =>
-                      selectedCategory = v.toString());
+                      setState(() => selectedCategory = v.toString());
                     },
                   ),
 
@@ -303,14 +278,12 @@ class _BudgetScreenState extends State<BudgetScreen> {
                   child: ListTile(
                     leading: const Icon(
                       Icons.monetization_on,
-                      color: Colors.deepPurple,
+                      color: AppTheme.primaryViolet,
                     ),
-                    title:
-                    Text("${e['title']} - ₹${e['amount']}"),
+                    title: Text("${e['title']} - ₹${e['amount']}"),
                     subtitle: Text(e['category']),
                     trailing: IconButton(
-                      icon: const Icon(Icons.delete,
-                          color: Colors.red),
+                      icon: const Icon(Icons.delete, color: Colors.red),
                       onPressed: () => deleteExpense(e['id']),
                     ),
                   ),
@@ -330,12 +303,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        boxShadow: const [
-          BoxShadow(
-            color: Colors.black12,
-            blurRadius: 6,
-          )
-        ],
+        boxShadow: const [BoxShadow(color: Colors.black12, blurRadius: 6)],
       ),
       child: child,
     );
@@ -344,9 +312,7 @@ class _BudgetScreenState extends State<BudgetScreen> {
   InputDecoration _input(String label) {
     return InputDecoration(
       labelText: label,
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
     );
   }
 }

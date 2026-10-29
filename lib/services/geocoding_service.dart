@@ -4,9 +4,7 @@ import 'package:http/http.dart' as http;
 class GeocodingService {
   static const String apiKey = "70101d58fc2d4441a91d29558f9157bb";
 
-  Future<List<Map<String, dynamic>>> searchPlaces(
-      String query,
-      ) async {
+  Future<List<Map<String, dynamic>>> searchPlaces(String query) async {
     if (query.trim().isEmpty) {
       return [];
     }
@@ -15,9 +13,9 @@ class GeocodingService {
 
     final url = Uri.parse(
       "https://api.geoapify.com/v1/geocode/autocomplete"
-          "?text=$encodedQuery"
-          "&limit=10"
-          "&apiKey=$apiKey",
+      "?text=$encodedQuery"
+      "&limit=10"
+      "&apiKey=$apiKey",
     );
 
     try {
@@ -96,16 +94,14 @@ class GeocodingService {
   }
 
   // Used across the app for fallback coordinates lookup
-  Future<Map<String, double>?> getCoordinates(
-      String location,
-      ) async {
+  Future<Map<String, double>?> getCoordinates(String location) async {
     final encodedLocation = Uri.encodeQueryComponent(location);
 
     final url = Uri.parse(
       "https://api.geoapify.com/v1/geocode/search"
-          "?text=$encodedLocation"
-          "&limit=1"
-          "&apiKey=$apiKey",
+      "?text=$encodedLocation"
+      "&limit=1"
+      "&apiKey=$apiKey",
     );
 
     try {
@@ -125,9 +121,51 @@ class GeocodingService {
         }
       }
 
+      // Fallback: OpenStreetMap Nominatim (Free, worldwide, zero API key)
+      final nominatimUrl = Uri.parse(
+        "https://nominatim.openstreetmap.org/search?q=$encodedLocation&format=json&limit=1",
+      );
+      final nomRes = await http
+          .get(nominatimUrl, headers: {'User-Agent': 'TravelCompanionApp/1.0'})
+          .timeout(const Duration(seconds: 4));
+
+      if (nomRes.statusCode == 200) {
+        final nomData = jsonDecode(nomRes.body);
+        if (nomData is List && nomData.isNotEmpty) {
+          final item = nomData[0];
+          return {
+            "lat": double.parse(item["lat"].toString()),
+            "lon": double.parse(item["lon"].toString()),
+          };
+        }
+      }
+
       return null;
     } catch (e) {
-      print("Geocoding error: $e");
+      // Secondary attempt with Nominatim if Geoapify threw network exception
+      try {
+        final nominatimUrl = Uri.parse(
+          "https://nominatim.openstreetmap.org/search?q=$encodedLocation&format=json&limit=1",
+        );
+        final nomRes = await http
+            .get(
+              nominatimUrl,
+              headers: {'User-Agent': 'TravelCompanionApp/1.0'},
+            )
+            .timeout(const Duration(seconds: 4));
+
+        if (nomRes.statusCode == 200) {
+          final nomData = jsonDecode(nomRes.body);
+          if (nomData is List && nomData.isNotEmpty) {
+            final item = nomData[0];
+            return {
+              "lat": double.parse(item["lat"].toString()),
+              "lon": double.parse(item["lon"].toString()),
+            };
+          }
+        }
+      } catch (_) {}
+
       return null;
     }
   }

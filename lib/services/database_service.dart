@@ -151,15 +151,24 @@ class DatabaseService {
             )
           ''');
 
-          await db.execute(
-            "ALTER TABLE trips ADD COLUMN cover_image TEXT",
-          );
+          final tripColumns = await db.rawQuery('PRAGMA table_info(trips)');
+          final hasCoverImage = tripColumns.any((col) => col['name'] == 'cover_image');
+          if (!hasCoverImage) {
+            await db.execute(
+              "ALTER TABLE trips ADD COLUMN cover_image TEXT",
+            );
+          }
         }
 
         if (oldVersion < 7) {
-          await db.execute(
-            'ALTER TABLE notes ADD COLUMN reminder_time TEXT',
-          );
+          final columns = await db.rawQuery('PRAGMA table_info(notes)');
+          final exists = columns.any((column) => column['name'] == 'reminder_time');
+
+          if (!exists) {
+            await db.execute(
+              'ALTER TABLE notes ADD COLUMN reminder_time TEXT',
+            );
+          }
         }
 
         // VERSION 8: Add persistence support for itineraries safely

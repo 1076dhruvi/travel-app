@@ -1,11 +1,11 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:path/path.dart' as path;
 import 'package:flutter_pdfview/flutter_pdfview.dart';
 import '../models/document.dart';
 import '../services/database_service.dart';
 import '../services/encryption_service.dart';
+import '../theme/app_theme.dart';
 import 'dart:typed_data';
 // ─────────────────────────────────────────────────────────────
 // 🔐 DOCUMENTS VAULT SCREEN
@@ -212,7 +212,7 @@ class _DocumentsVaultState extends State<DocumentsVault> {
     return Scaffold(
       backgroundColor: const Color(0xFF1A1A2E),
       appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppTheme.primaryTeal,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -235,7 +235,7 @@ class _DocumentsVaultState extends State<DocumentsVault> {
       body: _isLoading
           ? const Center(
           child:
-          CircularProgressIndicator(color: Colors.purpleAccent))
+          CircularProgressIndicator(color: AppTheme.primaryTeal))
           : _documents.isEmpty
           ? _buildEmptyState()
           : _buildDocumentList(),
@@ -271,7 +271,7 @@ class _DocumentsVaultState extends State<DocumentsVault> {
           const SizedBox(height: 30),
           ElevatedButton.icon(
             style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.deepPurple,
+              backgroundColor: AppTheme.primaryTeal,
               padding: const EdgeInsets.symmetric(
                   horizontal: 30, vertical: 14),
               shape: RoundedRectangleBorder(
@@ -397,7 +397,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppTheme.primaryTeal,
         title: Text(
           _isReady
               ? "Page $_currentPage / $_totalPages"
@@ -445,7 +445,7 @@ class ImageViewerScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        backgroundColor: Colors.deepPurple,
+        backgroundColor: AppTheme.primaryTeal,
         title: Text(
           title,
           style: const TextStyle(fontSize: 14),

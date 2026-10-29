@@ -75,7 +75,7 @@ class NoteItem extends StatelessWidget {
                                 ? Icons.push_pin
                                 : Icons.push_pin_outlined,
                             color: note.isPinned
-                                ? Colors.deepPurple
+                                ? const Color(0xFF0F766E)
                                 : Colors.black54,
                             size: 20,
                           ),
@@ -133,7 +133,7 @@ class NoteItem extends StatelessWidget {
                             padding: EdgeInsets.only(right: 8),
                             child: Icon(
                               Icons.push_pin,
-                              color: Colors.deepPurple,
+                              color: Color(0xFF0F766E),
                               size: 16,
                             ),
                           ),
