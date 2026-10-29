@@ -37,3 +37,4 @@ flutter:
   uses-material-design: true
   assets:
     - assets/data/emergency_data.json
+    - assets/mumbai_darshan.json

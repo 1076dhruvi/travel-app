@@ -1,6 +1,7 @@
 import 'dart:convert';
+import 'dart:io' show Platform;
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
-import '../config/app_config.dart';
 
 class PlacePrediction {
   final String placeId;
@@ -22,17 +23,16 @@ class PlacePrediction {
   factory PlacePrediction.fromMap(Map<String, dynamic> map) {
     return PlacePrediction(
       placeId: map['placeId']?.toString() ?? '',
-      primaryText:
-          map['primaryText']?.toString() ??
+      primaryText: map['primaryText']?.toString() ??
           map['structured_formatting']?['main_text']?.toString() ??
           map['description']?.toString() ??
           '',
-      secondaryText:
-          map['secondaryText']?.toString() ??
+      secondaryText: map['secondaryText']?.toString() ??
           map['structured_formatting']?['secondary_text']?.toString() ??
           '',
-      fullText:
-          map['fullText']?.toString() ?? map['description']?.toString() ?? '',
+      fullText: map['fullText']?.toString() ??
+          map['description']?.toString() ??
+          '',
       lat: (map['lat'] as num?)?.toDouble(),
       lon: (map['lon'] as num?)?.toDouble(),
     );
@@ -43,7 +43,13 @@ class GooglePlacesService {
   static final Map<String, List<PlacePrediction>> _autocompleteCache = {};
   static final Map<String, Map<String, dynamic>> _detailsCache = {};
 
-  String get _baseUrl => AppConfig.backendUrl;
+  String get _baseUrl {
+    if (kIsWeb) return "http://localhost:3000";
+    try {
+      if (Platform.isAndroid) return "http://10.0.2.2:3000";
+    } catch (_) {}
+    return "http://localhost:3000";
+  }
 
   /// Autocomplete suggestions with 300ms debounce support, session token, India-biased
   Future<List<PlacePrediction>> getAutocomplete(
@@ -61,17 +67,15 @@ class GooglePlacesService {
 
     try {
       final url = Uri.parse("$_baseUrl/api/places/autocomplete");
-      final response = await http
-          .post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "input": cleanQuery,
-              "sessionToken": sessionToken,
-              "destination": destination,
-            }),
-          )
-          .timeout(const Duration(seconds: 6));
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "input": cleanQuery,
+          "sessionToken": sessionToken,
+          "destination": destination,
+        }),
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -102,16 +106,14 @@ class GooglePlacesService {
 
     try {
       final url = Uri.parse("$_baseUrl/api/places/details");
-      final response = await http
-          .post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({
-              "placeId": placeId,
-              "sessionToken": sessionToken,
-            }),
-          )
-          .timeout(const Duration(seconds: 6));
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "placeId": placeId,
+          "sessionToken": sessionToken,
+        }),
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
@@ -132,13 +134,14 @@ class GooglePlacesService {
   Future<String?> reverseGeocode(double lat, double lon) async {
     try {
       final url = Uri.parse("$_baseUrl/api/places/reverse-geocode");
-      final response = await http
-          .post(
-            url,
-            headers: {"Content-Type": "application/json"},
-            body: jsonEncode({"lat": lat, "lon": lon}),
-          )
-          .timeout(const Duration(seconds: 6));
+      final response = await http.post(
+        url,
+        headers: {"Content-Type": "application/json"},
+        body: jsonEncode({
+          "lat": lat,
+          "lon": lon,
+        }),
+      ).timeout(const Duration(seconds: 6));
 
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);

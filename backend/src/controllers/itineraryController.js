@@ -3,6 +3,7 @@ import { getPlaceDetails, getCityCenter } from "../services/placesService.js";
 import { computeLegRoute, haversineDistanceKm } from "../services/routesService.js";
 import { orderStopsByShortestPath } from "../services/clusteringOrderingService.js";
 import { calculateSchedule } from "../services/scheduleService.js";
+import { clusterPlacesByProximity } from "../services/clusterService.js";
 
 export const generateItinerary = async (req, res) => {
   console.log("\n[LOG] Starting End-to-End Itinerary Generation Pipeline...");
@@ -38,24 +39,20 @@ export const generateItinerary = async (req, res) => {
       };
     }
 
-    // 3. Request Gemini for place names & clustering (coordinates NOT trusted from Gemini)
+    // 3. Request Gemini for place names & attraction selection
     console.log(`[LOG] Requesting Gemini day attractions for ${destination} (${days} days)...`);
-    const dayClusters = await generateItineraryPlan(destination, days, interests);
+    const geminiDayPlans = await generateItineraryPlan(destination, days, interests);
 
-    const enrichedDays = [];
+    // 4. Resolve each place through Places Text Search, dedupe by placeId across ALL days
+    console.log(`[LOG] Resolving attractions with Places API Text Search & deduping trip-wide...`);
+    const tripUsedPlaceIds = new Set();
+    const tripUsedNames = new Set();
+    const allVerifiedPlaces = [];
 
-    // 4. Process each day
-    for (let dayIndex = 0; dayIndex < dayClusters.length; dayIndex++) {
-      const dayData = dayClusters[dayIndex];
-      const dayNum = dayData.day || dayIndex + 1;
-      const rawAttractions = dayData.attractions || [];
-
-      console.log(`[LOG] Processing Day ${dayNum} (${rawAttractions.length} attractions)...`);
-
-      // 4a. Geocode each place strictly via Places API (Text Search)
-      // Discard any Gemini coordinates; apply 50 km sanity check from city center
-      const verifiedPlaces = [];
-      for (const attr of rawAttractions) {
+    // Collect all raw attractions across all Gemini day groups
+    for (const dayData of geminiDayPlans) {
+      const attractions = dayData.attractions || [];
+      for (const attr of attractions) {
         if (!attr.name) continue;
 
         try {
@@ -73,15 +70,28 @@ export const generateItinerary = async (req, res) => {
               }
             }
 
-            verifiedPlaces.push({
+            // Deduplicate across the ENTIRE trip by placeId and normalized name
+            const placeIdKey = placeInfo.placeId || `${pLat.toFixed(4)},${pLon.toFixed(4)}`;
+            const normName = (placeInfo.name || attr.name).toLowerCase().trim();
+
+            if (tripUsedPlaceIds.has(placeIdKey) || tripUsedNames.has(normName)) {
+              console.log(`[DEDUPE] Dropping duplicate place across trip: ${placeInfo.name || attr.name} (${placeIdKey})`);
+              continue;
+            }
+
+            tripUsedPlaceIds.add(placeIdKey);
+            tripUsedNames.add(normName);
+
+            allVerifiedPlaces.push({
+              placeId: placeIdKey,
               name: placeInfo.name || attr.name,
               description: attr.description || "",
               bestTime: attr.bestTime || "Morning",
               openingHours: placeInfo.openingHours || "check locally",
               lat: pLat,
               lon: pLon,
-              dayNumber: dayNum,
-              day: `Day ${dayNum}`,
+              preferredTheme: dayData.theme || "",
+              preferredArea: dayData.area || "",
             });
           } else {
             console.warn(`[SANITY CHECK] Dropping ${attr.name}: Could not verify coordinates via Places API`);
@@ -90,26 +100,51 @@ export const generateItinerary = async (req, res) => {
           console.warn(`Places API lookup error for ${attr.name}:`, pErr.message);
         }
       }
+    }
 
-      // If effectiveStart wasn't set, fallback to first verified place
-      if (!effectiveStart && verifiedPlaces.length > 0) {
-        effectiveStart = {
-          name: `${verifiedPlaces[0].name} (Start)`,
-          lat: verifiedPlaces[0].lat,
-          lon: verifiedPlaces[0].lon,
-          departureTime: "09:00",
-        };
-      }
+    console.log(`[LOG] Successfully verified ${allVerifiedPlaces.length} unique attractions for ${days} days.`);
 
-      // 4b. Re-order stops by shortest path from effectiveStart
-      const orderedStops = orderStopsByShortestPath(effectiveStart, verifiedPlaces);
+    // If effectiveStart wasn't set, fallback to first verified place
+    if (!effectiveStart && allVerifiedPlaces.length > 0) {
+      effectiveStart = {
+        name: `${allVerifiedPlaces[0].name} (Start)`,
+        lat: allVerifiedPlaces[0].lat,
+        lon: allVerifiedPlaces[0].lon,
+        departureTime: "09:00",
+      };
+    }
+
+    // 5. Cluster by lat/lng (distance threshold ~5 km).
+    // Each day = one cluster, each place belongs to exactly one cluster.
+    // Museum goes only in the South Mumbai (Fort/Kala Ghoda/Colaba) day.
+    const clusters = clusterPlacesByProximity(allVerifiedPlaces, days, destination);
+
+    const enrichedDays = [];
+
+    // 6. Process each clustered day
+    for (let dayIndex = 0; dayIndex < days; dayIndex++) {
+      const dayNum = dayIndex + 1;
+      const clusterPlaces = clusters[dayIndex] || [];
+      const geminiDayMeta = geminiDayPlans[dayIndex] || {};
+
+      console.log(`[LOG] Processing Clustered Day ${dayNum} (${clusterPlaces.length} attractions)...`);
+
+      // Set day label on each place
+      const dayPlaces = clusterPlaces.map((p) => ({
+        ...p,
+        dayNumber: dayNum,
+        day: `Day ${dayNum}`,
+      }));
+
+      // 6a. Re-order stops by shortest path from effectiveStart
+      const orderedStops = orderStopsByShortestPath(effectiveStart, dayPlaces);
       orderedStops.forEach((stop, idx) => {
         stop.stopNumber = idx + 1;
       });
 
-      // 4c. Compute real legs using Google Routes API
+      // 6b. Compute real legs using Google Routes API
       // Leg 0: startPoint -> stop 1
-      // Leg i: stop i-1 -> stop i (NEVER from start point)
+      // Leg i: stop i-1 -> stop i
       const legs = [];
       let totalMeters = 0;
       let totalSeconds = 0;
@@ -132,17 +167,20 @@ export const generateItinerary = async (req, res) => {
         }
       }
 
-      // 4d. Calculate schedule conforming to opening hours
+      // 6c. Calculate schedule conforming to opening hours
       calculateSchedule(orderedStops, legs, "09:00");
 
-      // 4e. Day Totals
+      // 6d. Day Totals
       const totalKm = (totalMeters / 1000).toFixed(1);
       const totalTransitMins = Math.round(totalSeconds / 60);
 
+      // Determine area name from places or fallback to Gemini theme
+      const areaName = geminiDayMeta.area || (orderedStops.length > 0 ? orderedStops[0].name.split(",")[0] : `Cluster ${dayNum}`);
+
       enrichedDays.push({
         day: dayNum,
-        theme: dayData.theme || `Day ${dayNum} Sightseeing`,
-        area: dayData.area || "",
+        theme: geminiDayMeta.theme || `Day ${dayNum} Sightseeing`,
+        area: areaName,
         totalStops: orderedStops.length,
         totalKm: `${totalKm} km`,
         totalTransitMinutes: totalTransitMins,
