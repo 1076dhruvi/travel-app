@@ -181,7 +181,8 @@ class GooglePlacesService {
   /// GET https://places.googleapis.com/v1/places/{id}
   /// Header: X-Goog-Api-Key, X-Goog-FieldMask: location,displayName
   Future<Map<String, dynamic>?> getPlaceDetails(
-    String placeId, {
+    String placeId,
+      String? sessionToken,{
     void Function(int status, String userMessage, String bodySnippet)? onError,
   }) async {
     if (placeId.isEmpty) return null;

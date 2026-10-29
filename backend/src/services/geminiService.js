@@ -17,7 +17,7 @@ export async function generateItineraryPlan(destination, days = 2, interests = [
   let model;
   try {
     model = genAI.getGenerativeModel({
-      model: "gemini-2.5-flash",
+      model: "gemini-3.5-flash-lite",
       generationConfig: {
         responseMimeType: "application/json",
         temperature: 0.2,

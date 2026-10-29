@@ -8,10 +8,10 @@ import '../models/trip.dart';
 import '../services/database_service.dart';
 import '../services/geocoding_service.dart';
 import '../services/google_places_service.dart';
+import '../widgets/mumbai_darshan_view.dart';
 import '../services/itinerary_service.dart';
 import '../services/routing_service.dart';
 import '../theme/app_theme.dart';
-import '../widgets/mumbai_darshan_view.dart';
 import 'map_screen.dart';
 
 class ItineraryScreen extends StatefulWidget {
@@ -46,7 +46,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   bool isLoading = false;
   bool isPreferencesExpanded = false;
-
   // Top Mode Tab for Mumbai: 0 = Custom itinerary, 1 = Mumbai Darshan
   int _selectedTopTab = 0;
 
@@ -54,7 +53,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   // Stored as one unified object {name, lat, lng, source: gps|search}
   StartPoint? currentStart;
   bool _hasRunInitialGps = false;
-
   final TextEditingController searchController = TextEditingController();
   final FocusNode searchFocusNode = FocusNode();
   Timer? _debounceTimer;
@@ -63,7 +61,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   bool isSearchingPlaces = false;
   bool hasResolvedStartCoords = false;
 
+  // Source of current start point: 'gps', 'search', or 'saved'
+  String _startSource = 'gps';
+
   String startPointName = "Detecting start location...";
+  double? startLat;
+  double? startLon;
   bool isDetectingLocation = false;
   String? locationStatusMessage;
 
@@ -123,15 +126,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       CurvedAnimation(parent: _shimmerController, curve: Curves.easeInOutSine),
     );
 
-    _initScreenData();
-  }
-
-  Future<void> _initScreenData() async {
-    await _loadSavedItinerary();
-    // GPS runs only once when no start is set
-    if (currentStart == null && !_hasRunInitialGps) {
-      await _detectUserLocation(isExplicitGpsTap: false);
-    }
+    _detectUserLocation();
+    _loadSavedItinerary();
   }
 
   @override
@@ -143,19 +139,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     super.dispose();
   }
 
-  void _showPlacesApiError(int status, String userMessage, String bodySnippet) {
-    if (!mounted) return;
-    debugPrint("[PLACES API ERROR] Status: $status, Snippet: $bodySnippet");
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text(userMessage),
-        backgroundColor: Colors.red.shade800,
-        duration: const Duration(seconds: 6),
-      ),
-    );
-  }
-
-  // ── Start Point & Autocomplete Handling (Places API New REST) ──
+  // ── Start Point & Autocomplete Handling ──────────────────────
 
   void _onSearchChanged(String query) {
     _debounceTimer?.cancel();
@@ -169,6 +153,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
     }
 
     // Invalidate previous resolved coordinates when user changes text
+    // to strictly avoid regenerating with stale coordinates
     hasResolvedStartCoords = false;
 
     _debounceTimer = Timer(const Duration(milliseconds: 300), () async {
@@ -183,7 +168,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       final results = await googlePlacesService.getAutocomplete(
         query,
         sessionToken: _placesSessionToken,
-        onError: _showPlacesApiError,
       );
 
       if (mounted) {
@@ -196,7 +180,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
   }
 
   Future<void> _onSelectPrediction(PlacePrediction prediction) async {
-    // Close the keyboard
     searchFocusNode.unfocus();
     setState(() {
       autocompleteSuggestions = [];
@@ -214,7 +197,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       if (lat == null || lon == null) {
         final details = await googlePlacesService.getPlaceDetails(
           prediction.placeId,
-          onError: _showPlacesApiError,
+          _placesSessionToken,
         );
         if (details != null && details['lat'] != null && details['lon'] != null) {
           lat = (details['lat'] as num).toDouble();
@@ -223,29 +206,29 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         }
       }
 
+      // Reset session token after selection
       _placesSessionToken = null;
 
       if (lat != null && lon != null) {
         if (mounted) {
-          final newStart = StartPoint(
-            name: resolvedName,
-            latitude: lat,
-            longitude: lon,
-            source: 'search',
-          );
-
           setState(() {
-            currentStart = newStart;
-            itineraryStartPoint = newStart;
+            _startSource = 'search';
+            startLat = lat;
+            startLon = lon;
             startPointName = resolvedName;
             searchController.text = resolvedName;
             hasResolvedStartCoords = true;
             isDetectingLocation = false;
             // Clear cached legs so itinerary recalculates from new start
             itineraryLegs = [];
+            itineraryStartPoint = StartPoint(
+              name: resolvedName,
+              latitude: lat!,
+              longitude: lon!,
+            );
           });
 
-          // Immediately regenerate itinerary with new coordinates
+          // Immediately regenerate itinerary with newly verified coordinates
           await _generateItinerary();
         }
       } else {
@@ -263,22 +246,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           isDetectingLocation = false;
           locationStatusMessage = "Error selecting place: $e";
         });
-        _showPlacesApiError(500, "Error selecting place: $e", e.toString());
       }
     }
   }
 
-  Future<void> _detectUserLocation({bool isExplicitGpsTap = false}) async {
-    // GPS runs only once when no start is set, and when user taps GPS icon.
-    // Never overwrite source=search.
-    if (!isExplicitGpsTap) {
-      if (currentStart != null || _hasRunInitialGps) return;
-      _hasRunInitialGps = true;
-    }
-
-    if (currentStart != null && currentStart!.source == 'search' && !isExplicitGpsTap) {
-      return;
-    }
+  Future<void> _detectUserLocation({bool forceOverwrite = false}) async {
+    // Never overwrite a user-typed (source=search) start unless the user
+    // explicitly tapped the GPS icon (forceOverwrite=true).
+    if (_startSource == 'search' && !forceOverwrite) return;
 
     setState(() {
       isDetectingLocation = true;
@@ -292,7 +267,8 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         if (mounted) {
           setState(() {
             isDetectingLocation = false;
-            if (!hasResolvedStartCoords && currentStart == null) {
+            // Only set a fallback name if nothing has been resolved yet
+            if (!hasResolvedStartCoords) {
               startPointName = "${widget.trip.location} City Center";
               searchController.text = startPointName;
             }
@@ -313,7 +289,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         if (mounted) {
           setState(() {
             isDetectingLocation = false;
-            if (!hasResolvedStartCoords && currentStart == null) {
+            if (!hasResolvedStartCoords) {
               startPointName = "${widget.trip.location} City Center";
               searchController.text = startPointName;
             }
@@ -337,27 +313,21 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       final finalName = friendlyName ?? "Current Location";
 
       if (mounted) {
-        // Never overwrite if user picked search in the meantime
-        if (currentStart != null && currentStart!.source == 'search' && !isExplicitGpsTap) {
-          return;
-        }
-
-        final gpsStart = StartPoint(
-          name: finalName,
-          latitude: position.latitude,
-          longitude: position.longitude,
-          source: 'gps',
-        );
-
         setState(() {
-          currentStart = gpsStart;
-          itineraryStartPoint = gpsStart;
+          _startSource = 'gps';
+          startLat = position.latitude;
+          startLon = position.longitude;
           startPointName = finalName;
           searchController.text = finalName;
           hasResolvedStartCoords = true;
           locationStatusMessage = null;
           isDetectingLocation = false;
-          itineraryLegs = [];
+
+          itineraryStartPoint = StartPoint(
+            name: finalName,
+            latitude: position.latitude,
+            longitude: position.longitude,
+          );
         });
 
         // Regenerate itinerary with current GPS location
@@ -369,7 +339,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       if (mounted) {
         setState(() {
           isDetectingLocation = false;
-          if (!hasResolvedStartCoords && currentStart == null) {
+          if (!hasResolvedStartCoords) {
             startPointName = "${widget.trip.location} City Center";
             searchController.text = startPointName;
           }
@@ -420,10 +390,12 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           itineraryMapPlaces = loadedPlaces;
           itineraryLegs = loadedLegs;
           if (loadedStart != null) {
-            currentStart = loadedStart;
+            _startSource = 'saved';
             itineraryStartPoint = loadedStart;
             startPointName = loadedStart.name;
             searchController.text = loadedStart.name;
+            startLat = loadedStart.latitude;
+            startLon = loadedStart.longitude;
             hasResolvedStartCoords = true;
           }
           isPreferencesExpanded = false;
@@ -446,7 +418,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       "routingData": routingData,
       "mapPlaces": itineraryMapPlaces.map((p) => p.toMap()).toList(),
       "legs": itineraryLegs.map((l) => l.toMap()).toList(),
-      "startPoint": (currentStart ?? itineraryStartPoint)?.toMap(),
+      "startPoint": itineraryStartPoint?.toMap(),
     };
 
     await databaseService.saveItinerary(
@@ -459,7 +431,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
 
   Future<void> _generateItinerary() async {
     // Sanity check: Never regenerate with stale coordinates
-    if (!hasResolvedStartCoords && currentStart == null) {
+    if (!hasResolvedStartCoords && (startLat == null || startLon == null)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
           content: Text(
@@ -481,12 +453,11 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       debugPrint("Generating refined itinerary for ${widget.trip.location}...");
 
       Map<String, dynamic>? startPointPayload;
-      if (currentStart != null) {
+      if (startLat != null && startLon != null) {
         startPointPayload = {
-          "name": currentStart!.name,
-          "lat": currentStart!.lat,
-          "lon": currentStart!.lng,
-          "source": currentStart!.source,
+          "name": startPointName,
+          "lat": startLat,
+          "lon": startLon,
         };
       }
 
@@ -542,15 +513,14 @@ class _ItineraryScreenState extends State<ItineraryScreen>
         itineraryData = result;
         itineraryMapPlaces = allPlaces;
         itineraryLegs = allLegs;
-        // Only update startPoint from backend if the user hasn't chosen a search place
-        if (resolvedStart != null && (currentStart == null || currentStart!.source != 'search')) {
-          currentStart = resolvedStart;
+        // Only update startPoint from backend if the user hasn't typed a search choice
+        if (resolvedStart != null && _startSource != 'search') {
           itineraryStartPoint = resolvedStart;
           startPointName = resolvedStart.name;
           searchController.text = resolvedStart.name;
+          startLat = resolvedStart.latitude;
+          startLon = resolvedStart.longitude;
           hasResolvedStartCoords = true;
-        } else if (currentStart != null) {
-          itineraryStartPoint = currentStart;
         }
         isPreferencesExpanded = false;
         selectedDayTab = 0;
@@ -596,7 +566,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           title: "${widget.trip.location} Route Map",
           places: itineraryMapPlaces,
           legs: itineraryLegs,
-          startPoint: currentStart ?? itineraryStartPoint,
+          startPoint: itineraryStartPoint,
           initialDay: initialDay,
         ),
       ),
@@ -874,7 +844,6 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       "cost": costText,
     };
   }
-
   Widget _buildTopModeToggle() {
     return Container(
       margin: const EdgeInsets.fromLTRB(16, 12, 16, 4),
@@ -895,16 +864,18 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: _selectedTopTab == 0 ? Colors.white : Colors.transparent,
+                  color: _selectedTopTab == 0
+                      ? Colors.white
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(9),
                   boxShadow: _selectedTopTab == 0
                       ? const [
-                          BoxShadow(
-                            color: Color(0x140F172A),
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          ),
-                        ]
+                    BoxShadow(
+                      color: Color(0x140F172A),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ]
                       : null,
                 ),
                 child: Center(
@@ -932,16 +903,18 @@ class _ItineraryScreenState extends State<ItineraryScreen>
               child: Container(
                 padding: const EdgeInsets.symmetric(vertical: 10),
                 decoration: BoxDecoration(
-                  color: _selectedTopTab == 1 ? const Color(0xFFF57220) : Colors.transparent,
+                  color: _selectedTopTab == 1
+                      ? const Color(0xFFF57220)
+                      : Colors.transparent,
                   borderRadius: BorderRadius.circular(9),
                   boxShadow: _selectedTopTab == 1
                       ? const [
-                          BoxShadow(
-                            color: Color(0x33F57220),
-                            blurRadius: 4,
-                            offset: Offset(0, 2),
-                          ),
-                        ]
+                    BoxShadow(
+                      color: Color(0x33F57220),
+                      blurRadius: 4,
+                      offset: Offset(0, 2),
+                    ),
+                  ]
                       : null,
                 ),
                 child: Center(
@@ -951,7 +924,9 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                       Icon(
                         Icons.tour_outlined,
                         size: 15,
-                        color: _selectedTopTab == 1 ? Colors.white : AppTheme.textSlateSecondary,
+                        color: _selectedTopTab == 1
+                            ? Colors.white
+                            : AppTheme.textSlateSecondary,
                       ),
                       const SizedBox(width: 6),
                       Text(
@@ -974,25 +949,26 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       ),
     );
   }
-
   @override
   Widget build(BuildContext context) {
-    final daysList = (itineraryData != null && itineraryData!["itinerary"] != null)
+    final daysList =
+    (itineraryData != null && itineraryData!["itinerary"] != null)
         ? (itineraryData!["itinerary"] as List)
         : [];
 
     final hasItinerary = daysList.isNotEmpty;
-    final bool isMumbai = widget.trip.location.toLowerCase().contains("mumbai");
+    final bool isMumbai =
+    widget.trip.location.toLowerCase().contains("mumbai");
 
     return Scaffold(
       backgroundColor: AppTheme.backgroundSlate,
       appBar: AppBar(
         title: Text(
-          (isMumbai && _selectedTopTab == 1)
+          isMumbai && _selectedTopTab == 1
               ? "Mumbai Darshan"
               : "${widget.trip.location} Itinerary",
         ),
-        backgroundColor: (isMumbai && _selectedTopTab == 1)
+        backgroundColor: isMumbai && _selectedTopTab == 1
             ? const Color(0xFFF57220)
             : AppTheme.primaryTeal,
         foregroundColor: Colors.white,
@@ -1008,90 +984,103 @@ class _ItineraryScreenState extends State<ItineraryScreen>
       ),
       body: isMumbai && _selectedTopTab == 1
           ? Column(
-              children: [
-                _buildTopModeToggle(),
-                const Expanded(child: MumbaiDarshanView()),
-              ],
-            )
+        children: [
+          _buildTopModeToggle(),
+          const Expanded(
+            child: MumbaiDarshanView(),
+          ),
+        ],
+      )
           : SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Mumbai Mode Switcher (Custom Itinerary vs Mumbai Darshan)
-                  if (isMumbai) _buildTopModeToggle(),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Mumbai Mode Switcher
+            if (isMumbai) _buildTopModeToggle(),
 
-                  // ── Top Summary & Action Banner ───────────────────
-                  _buildTopBanner(hasItinerary),
+            // Top Summary & Action Banner
+            _buildTopBanner(hasItinerary),
 
-                  // ── Rounded Search Bar Start Card with GPS inside ─
-                  _buildStartPointCard(),
+            // Start Point Search and GPS
+            _buildStartPointCard(),
 
-                  // ── Day Summary at the Top (Stops, KM, Time, Cost) ─
-                  if (hasItinerary && !isLoading)
-                    _buildDaySummaryCard(daysList, selectedDayTab),
+            // Day Summary
+            if (hasItinerary && !isLoading)
+              _buildDaySummaryCard(daysList, selectedDayTab),
 
-                  // ── Expandable Preferences Section ───────────────
-                  _buildPreferencesSection(hasItinerary),
+            // Expandable Preferences
+            _buildPreferencesSection(hasItinerary),
 
-                  // ── Skeleton Loader or Itinerary Content ──────────
-                  if (isLoading)
-                    _buildSkeletonTimeline()
-                  else if (hasItinerary) ...[
-                    _buildDayTabsBar(daysList),
-                    _buildDaysContent(daysList),
-                  ] else ...[
-                    _buildEmptyState(),
-                  ],
+            // Itinerary Content
+            if (isLoading)
+              _buildSkeletonTimeline()
+            else if (hasItinerary) ...[
+              _buildDayTabsBar(daysList),
+              _buildDaysContent(daysList),
+            ] else ...[
+              _buildEmptyState(),
+            ],
 
-                  const SizedBox(height: 80),
-                ],
-              ),
-            ),
-      bottomNavigationBar: (hasItinerary && !isLoading && _selectedTopTab == 0)
+            const SizedBox(height: 80),
+          ],
+        ),
+      ),
+      bottomNavigationBar: hasItinerary &&
+          !isLoading &&
+          _selectedTopTab == 0
           ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                boxShadow: const [
-                  BoxShadow(
-                    color: Color(0x140F172A),
-                    blurRadius: 10,
-                    offset: Offset(0, -3),
+        padding: const EdgeInsets.symmetric(
+          horizontal: 20,
+          vertical: 12,
+        ),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          boxShadow: const [
+            BoxShadow(
+              color: Color(0x140F172A),
+              blurRadius: 10,
+              offset: Offset(0, -3),
+            ),
+          ],
+        ),
+        child: SafeArea(
+          child: Row(
+            children: [
+              Expanded(
+                child: ElevatedButton.icon(
+                  icon: const Icon(
+                    Icons.map,
+                    color: Colors.white,
                   ),
-                ],
-              ),
-              child: SafeArea(
-                child: Row(
-                  children: [
-                    Expanded(
-                      child: ElevatedButton.icon(
-                        icon: const Icon(Icons.map, color: Colors.white),
-                        label: Text(
-                          selectedDayTab == 0
-                              ? "View Full Route Map (${itineraryMapPlaces.length} Stops)"
-                              : "View Day $selectedDayTab on Map",
-                          style: const TextStyle(
-                            fontSize: 15,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: selectedDayTab == 0
-                              ? AppTheme.primaryTeal
-                              : _getDayColor(selectedDayTab),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(14),
-                          ),
-                        ),
-                        onPressed: () => _openMap(initialDay: selectedDayTab),
-                      ),
+                  label: Text(
+                    selectedDayTab == 0
+                        ? "View Full Route Map (${itineraryMapPlaces.length} Stops)"
+                        : "View Day $selectedDayTab on Map",
+                    style: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.bold,
                     ),
-                  ],
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: selectedDayTab == 0
+                        ? AppTheme.primaryTeal
+                        : _getDayColor(selectedDayTab),
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 14,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                  onPressed: () =>
+                      _openMap(initialDay: selectedDayTab),
                 ),
               ),
-            )
+            ],
+          ),
+        ),
+      )
           : null,
     );
   }
@@ -1347,21 +1336,21 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                   ),
                 ),
               ),
-              if (currentStart != null)
+              if (hasResolvedStartCoords)
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
-                    color: currentStart!.source == 'search'
+                    color: _startSource == 'search'
                         ? AppTheme.primaryTealLight
                         : AppTheme.modeWalkLight,
                     borderRadius: BorderRadius.circular(10),
                   ),
                   child: Text(
-                    currentStart!.source == 'search' ? "Searched" : "GPS",
+                    _startSource == 'search' ? "Searched" : "GPS",
                     style: TextStyle(
                       fontSize: 10,
                       fontWeight: FontWeight.bold,
-                      color: currentStart!.source == 'search'
+                      color: _startSource == 'search'
                           ? AppTheme.primaryTealDark
                           : AppTheme.modeWalk,
                     ),
@@ -1409,7 +1398,7 @@ class _ItineraryScreenState extends State<ItineraryScreen>
                     tooltip: "Use Current GPS Location",
                     onPressed: isDetectingLocation
                         ? null
-                        : () => _detectUserLocation(isExplicitGpsTap: true),
+                        : () => _detectUserLocation(forceOverwrite: true),
                   ),
                   const SizedBox(width: 4),
                 ],
@@ -1481,18 +1470,18 @@ class _ItineraryScreenState extends State<ItineraryScreen>
           ],
 
           // Show real lat/lng under start name
-          if (currentStart != null) ...[
+          if (hasResolvedStartCoords && startLat != null && startLon != null) ...[
             const SizedBox(height: 6),
             Row(
               children: [
                 Icon(
-                  currentStart!.source == 'search' ? Icons.search : Icons.gps_fixed,
+                  _startSource == 'search' ? Icons.search : Icons.gps_fixed,
                   size: 12,
                   color: AppTheme.textSlateSecondary,
                 ),
                 const SizedBox(width: 4),
                 Text(
-                  '${currentStart!.lat.toStringAsFixed(5)}, ${currentStart!.lng.toStringAsFixed(5)}',
+                  '${startLat!.toStringAsFixed(5)}, ${startLon!.toStringAsFixed(5)}',
                   style: const TextStyle(
                     fontSize: 11,
                     color: AppTheme.textSlateSecondary,
